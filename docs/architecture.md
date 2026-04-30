@@ -72,6 +72,28 @@ LeakShield does **not** download models for you. The inspector's `mock` backend 
 work without any model; switch to `ollama`, `vllm`, `llamacpp`, or `openai_compat` once you pull
 or run whatever model you want.
 
+### Built-in vs. company-custom categories
+
+DLP is rarely "just PII." Every company has its own definition of "do not let this leave the
+building" — proprietary project names, customer lists, internal financials, M&A discussions,
+contract language, source code with embedded secrets. LeakShield's strategies layer two
+category sets:
+
+1. **Built-in**: PII (name, email, phone, TC kimlik, IBAN, passport, address, DOB, credit card,
+   amounts), credentials (OpenAI/Anthropic/AWS keys, PEM blocks, generic high-entropy tokens),
+   and source-code-embedded secrets.
+2. **Company-custom**, declared by the admin, with any combination of:
+   - keyword lists (project codenames, internal terminology),
+   - regex patterns (internal ticket / account ID formats),
+   - document fingerprints (`"Confidential — Internal Only"`),
+   - LLM-only categories described in plain English ("any pending M&A discussion"),
+   - hashed customer / employee directories evaluated via Bloom filters so the raw list never
+     enters LLM context.
+
+Each category carries a severity (`ALLOW` / `MASK` / `BLOCK`) and is encrypted at rest under
+the tenant DEK alongside provider keys, since the rules themselves describe what the company
+considers secret. Full reference: [dlp-categories.md](dlp-categories.md).
+
 ## Security posture
 
 - **Envelope encryption**: KEK ⊃ DEK ⊃ data. KEK pluggable: Vault Transit, AWS / GCP / Azure KMS,

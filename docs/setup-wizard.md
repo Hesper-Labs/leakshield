@@ -63,6 +63,19 @@ When the admin picks one of the LLM-backed options, a model picker appears:
 
 For the Judge strategy, the admin lands on the policy editor (see `policy-editor.md`).
 
+After picking a strategy, an optional **"Add company-custom categories"** screen offers
+quick-start templates the admin can accept or skip:
+
+- "We have proprietary project codenames" → keyword-list editor.
+- "We have customer / vendor lists" → CSV uploader (hashed at rest, evaluated via Bloom filter).
+- "We want to block discussion of pending deals / M&A" → LLM-only category with a
+  pre-written description the admin can refine.
+- "We want to keep source code with secrets out of prompts" → toggles the built-in
+  `CODE.SECRET_IN_SOURCE` category to BLOCK.
+
+Categories can also be added later from Policy → Categories. See
+[dlp-categories.md](dlp-categories.md) for the full mechanism reference.
+
 ### 5. Verify
 
 A copy-paste curl snippet for the chosen provider native endpoint (preferring the one the admin

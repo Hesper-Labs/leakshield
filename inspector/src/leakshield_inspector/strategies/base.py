@@ -61,6 +61,29 @@ class Verdict:
     inspector_id: str = ""
 
 
+@dataclass
+class CustomCategory:
+    """A company-defined DLP category.
+
+    Custom categories let an admin describe what *this specific company* considers
+    sensitive: project codenames, customer / vendor lists, internal ticket IDs,
+    contract markers, M&A discussions, source files with embedded secrets, etc.
+
+    Any combination of mechanisms is supported; a category fires if *any* mechanism
+    matches. ``llm_only`` categories are not evaluated by the regex / fingerprint
+    fast path and are passed to the LLM judge instead.
+    """
+
+    name: str
+    description: str = ""
+    severity: Decision = Decision.BLOCK
+    keywords: list[str] = field(default_factory=list)
+    regex: list[str] = field(default_factory=list)
+    fingerprints: list[str] = field(default_factory=list)
+    directory_hashes: list[bytes] = field(default_factory=list)
+    llm_only: bool = False
+
+
 class Filter(ABC):
     """Abstract DLP filter strategy."""
 
@@ -72,7 +95,13 @@ class Filter(ABC):
         messages: list[Message],
         config: dict[str, Any],
     ) -> Verdict:
-        """Inspect prompt messages and return a verdict."""
+        """Inspect prompt messages and return a verdict.
+
+        ``config`` is the strategy-specific configuration JSON loaded from the
+        tenant's policy. For Hybrid / Judge strategies it includes a list of
+        custom categories under ``config["custom_categories"]`` (parsed into
+        :class:`CustomCategory` instances by the strategy).
+        """
 
     async def health(self) -> bool:
         """Return True if the strategy backend is reachable and warm."""

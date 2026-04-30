@@ -36,7 +36,7 @@ func vkToJSON(vk *store.VirtualKey) virtualKeyJSON {
 		Prefix:           vk.KeyPrefix,
 		AllowedProviders: vk.AllowedProviders,
 		AllowedModels:    vk.AllowedModels,
-		IsActive:         vk.IsActive,
+		IsActive:         vk.IsActive(),
 	}
 }
 

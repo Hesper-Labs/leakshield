@@ -1,6 +1,4 @@
 -- +goose Up
--- +goose StatementBegin
-
 -- Provider model catalog with prices in USD micros per 1k tokens.
 -- Source: each provider's official pricing page; refresh periodically.
 -- 1 micro = 1/1_000_000 USD; e.g. 2_500 == $0.0025.
@@ -30,11 +28,7 @@ INSERT INTO provider_models (provider, model, input_usd_micro_per_1k, output_usd
     ('azure', 'gpt-35-turbo',      500,   1500,  16000)
 ON CONFLICT (provider, model) DO NOTHING;
 
--- +goose StatementEnd
 
 -- +goose Down
--- +goose StatementBegin
-
 DELETE FROM provider_models;
 
--- +goose StatementEnd

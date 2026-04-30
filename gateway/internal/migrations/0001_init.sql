@@ -1,5 +1,4 @@
 -- +goose Up
--- +goose StatementBegin
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -84,7 +83,9 @@ CREATE TABLE virtual_keys (
     expires_at               TIMESTAMPTZ,
     revoked_at               TIMESTAMPTZ,
     last_used_at             TIMESTAMPTZ,
-    is_active                BOOLEAN GENERATED ALWAYS AS (revoked_at IS NULL AND (expires_at IS NULL OR expires_at > now())) STORED,
+    -- is_active is derived in application code (revoked_at IS NULL AND
+    -- (expires_at IS NULL OR expires_at > now())); a generated column would
+    -- need now() to be IMMUTABLE which it isn't.
     created_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX virtual_keys_company_user ON virtual_keys (company_id, user_id);
@@ -165,6 +166,7 @@ CREATE INDEX audit_logs_request ON audit_logs (request_id);
 
 -- Daily rollups for fast analytics charts.
 CREATE TABLE usage_aggregates (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     company_id         UUID NOT NULL,
     user_id            UUID,
     virtual_key_id     UUID,
@@ -178,8 +180,7 @@ CREATE TABLE usage_aggregates (
     prompt_tokens      BIGINT NOT NULL DEFAULT 0,
     completion_tokens  BIGINT NOT NULL DEFAULT 0,
     cost_usd_micro     BIGINT NOT NULL DEFAULT 0,
-    PRIMARY KEY (company_id, bucket, COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid),
-                 COALESCE(virtual_key_id, '00000000-0000-0000-0000-000000000000'::uuid), provider, COALESCE(model, ''))
+    UNIQUE NULLS NOT DISTINCT (company_id, bucket, user_id, virtual_key_id, provider, model)
 );
 CREATE INDEX usage_aggregates_company_bucket ON usage_aggregates (company_id, bucket DESC);
 
@@ -229,18 +230,18 @@ GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO leakshield_service;
 ALTER ROLE leakshield_service SET search_path = public;
 
 -- updated_at trigger.
+-- +goose StatementBegin
 CREATE OR REPLACE FUNCTION trg_set_updated_at() RETURNS trigger AS $$
 BEGIN NEW.updated_at = now(); RETURN NEW; END;
 $$ LANGUAGE plpgsql;
+-- +goose StatementEnd
 
 CREATE TRIGGER companies_updated BEFORE UPDATE ON companies FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 CREATE TRIGGER users_updated BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 CREATE TRIGGER dlp_policies_updated BEFORE UPDATE ON dlp_policies FOR EACH ROW EXECUTE FUNCTION trg_set_updated_at();
 
--- +goose StatementEnd
 
 -- +goose Down
--- +goose StatementBegin
 
 DROP TABLE IF EXISTS usage_aggregates CASCADE;
 DROP TABLE IF EXISTS audit_logs CASCADE;
@@ -255,5 +256,3 @@ DROP TABLE IF EXISTS companies CASCADE;
 
 DROP FUNCTION IF EXISTS trg_set_updated_at();
 DROP ROLE IF EXISTS leakshield_service;
-
--- +goose StatementEnd

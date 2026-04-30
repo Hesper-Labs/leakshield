@@ -36,7 +36,7 @@
     "next": "^15.5.0",
     "next-auth": "5.0.0-beta.25",
     "next-intl": "^3.25.0",
-    "openapi-fetch": "^0.13.0",
+    "openapi-fetch": "^0.17.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^2.13.0",

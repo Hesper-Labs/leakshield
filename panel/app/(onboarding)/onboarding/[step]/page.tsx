@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 
 import { OnboardingStep } from "@/components/onboarding/onboarding-step";
 import { Step1CreateAdmin } from "@/components/onboarding/step-1-create-admin";
+import { Step2Provider } from "@/components/onboarding/step-2-provider";
+import { Step3User } from "@/components/onboarding/step-3-user";
 import { fetchSetupStatus } from "@/lib/setup-status";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -72,6 +74,10 @@ export default async function OnboardingStepPage({
 
       {stepNum === 1 ? (
         <Step1CreateAdmin />
+      ) : stepNum === 2 ? (
+        <Step2Provider />
+      ) : stepNum === 3 ? (
+        <Step3User />
       ) : (
         <OnboardingStep
           step={stepNum}

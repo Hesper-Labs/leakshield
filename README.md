@@ -1,10 +1,8 @@
+<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/banner.png" alt="LeakShield — API Gateway. Secret Guard. Built for Safety." />
+
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/logo.png" alt="LeakShield" width="200" />
-
 # LeakShield
-
-**API Gateway. Secret Guard. Built for Safety.**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-pre--alpha-orange.svg)](#status--roadmap)
@@ -14,16 +12,17 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/Hesper-Labs/leakshield/ci.yml?branch=main&label=CI)](.github/workflows/ci.yml)
 [![CodeQL](https://img.shields.io/github/actions/workflow/status/Hesper-Labs/leakshield/codeql.yml?branch=main&label=CodeQL)](.github/workflows/codeql.yml)
 [![OpenSSF Scorecard](https://img.shields.io/badge/OpenSSF%20Scorecard-pending-lightgrey.svg)](https://securityscorecards.dev/)
-[![OpenSSF Best Practices](https://img.shields.io/badge/OpenSSF%20Best%20Practices-pending-lightgrey.svg)](https://www.bestpractices.dev/)
+[![Stars](https://img.shields.io/github/stars/Hesper-Labs/leakshield?style=social)](https://github.com/Hesper-Labs/leakshield/stargazers)
 
 </div>
-
-<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/banner.png" alt="LeakShield architecture banner" />
 
 LeakShield is an open-source **AI Gateway + DLP** that sits between your employees and the LLM
 providers they use (OpenAI, Anthropic, Google, Azure). It isolates provider keys, inspects every
 prompt with a **local LLM of your choice** for sensitive data leaks, and gives you full
 per-employee audit and usage analytics.
+
+> **Self-host only.** LeakShield is designed to run inside your network. There is no managed
+> SaaS offering and no telemetry phone-home.
 
 ## Why LeakShield
 
@@ -40,38 +39,90 @@ Most existing tools fix only one half of this problem:
 
 LeakShield does both, locally. Your prompts never leave your infrastructure unless they pass DLP.
 
-> **Self-host only.** LeakShield is designed to run inside your network. There is no managed
-> SaaS offering and no telemetry phone-home. The only data the project operators see is whatever
-> you choose to file in a public GitHub issue.
+## Inside the Panel
 
-## Features
+A real five-minute walkthrough of the UI you get out of the box. Every screenshot below is a live
+render of the Next.js admin panel against the running gateway — no mockups.
 
-- **Multi-protocol native gateway** — OpenAI, Anthropic, Google Gemini, and Azure OpenAI exposed
-  on their own native endpoints (`/openai/v1/*`, `/anthropic/v1/*`, etc.). Existing SDKs and CLIs
-  (OpenAI Python, Anthropic Python, **Claude Code CLI**, Cursor, Aider, Continue.dev) work by just
-  changing the `base_url`.
-- **Per-employee virtual keys** — issue, revoke, rate-limit, and budget-cap keys per user.
-  Master provider keys are stored encrypted under envelope encryption (KEK ⊃ DEK).
-- **Pluggable local DLP** — pick your own model and your own strategy from the admin UI:
-  - Specialized DLP classifiers (Llama Guard 3, ShieldGemma, etc.) — optional convenience
-  - **Any general LLM as a judge** with a custom, admin-editable prompt (Llama 3.2, Qwen 2.5,
-    Mistral, Phi — your call)
-  - Hybrid: Microsoft Presidio (regex/NER, including Turkish-aware recognizers like TC kimlik,
-    IBAN, GSM) escalating ambiguous content to your chosen LLM
-- **Custom DLP policies** — edit the judge prompt in a Monaco-powered editor with a built-in
-  test harness. An adversarial test suite gates deploys so a malicious admin can't ship an
-  "always allow" prompt.
-- **Multi-tenant** — many companies on one deploy, with PostgreSQL row-level security for hard
-  tenant isolation.
-- **Production-ready streaming** — SSE end-to-end with HTTP/2 multiplexing to providers.
-  Optional output-side filtering for response-side leak prevention.
-- **Full audit + analytics** — per-user requests, tokens, cost, blocked categories, latency
-  percentiles. Live audit log via SSE. Tamper-evident hash chain on every record.
-- **No model auto-download** — `docker compose up` works out of the box without pulling any LLM
-  weights. The default inspector backend is a mock filter so you can wire up the gateway end-to-end
-  before deciding which model you want.
-- **On-premise first** — Docker Compose for dev/single-node, Helm chart for Kubernetes. KEK from
-  Vault, AWS KMS, GCP KMS, or Azure Key Vault.
+### 1. Setup wizard — first install
+
+Visiting the panel on a fresh install routes the visitor straight into a single create-admin
+screen. No "sign-in vs sign-up" confusion.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/01-onboarding-create-admin.png" alt="Onboarding step 1 — create admin account" width="900" />
+</p>
+
+The wizard then walks through provider connection (with live test-connection feedback) and the
+first virtual key issuance, with the plaintext key shown exactly once.
+
+<table>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/02-onboarding-provider.png" alt="Onboarding step 2 — connect provider" /></td>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/03-onboarding-user-key.png" alt="Onboarding step 3 — first user + virtual key" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Step 2 — pick a provider, paste an API key, watch the live test-connection probe.</sub></td>
+    <td align="center"><sub>Step 3 — issue the first virtual key. Plaintext shown once, copy gated.</sub></td>
+  </tr>
+</table>
+
+### 2. DLP policy editor
+
+A Monaco-powered editor with a built-in test harness on the right and a Variables / Templates rail
+on the left. Save Draft / Test / Deploy gates the dangerous button on a passing test.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/13-policy-editor.png" alt="DLP policy editor with Monaco + test harness" width="900" />
+</p>
+
+The Categories editor surfaces both the built-in catalog (PII, credentials, source-code secrets)
+and the company-custom categories every tenant can define — keyword lists, regex, document
+fingerprints, hashed customer / employee directories, and LLM-only category descriptions.
+
+<p align="center">
+  <img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/14-policy-categories.png" alt="DLP categories — built-in catalog + custom categories editor" width="900" />
+</p>
+
+### 3. Day-to-day admin
+
+Dashboard with KPI tiles and per-provider usage. Users with bulk CSV import. Per-user virtual
+keys with one-time-show on creation.
+
+<table>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/07-dashboard.png" alt="Dashboard" /></td>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/10-users.png" alt="Users" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Dashboard — requests, blocks, cost, top users at a glance.</sub></td>
+    <td align="center"><sub>Users — virtualised table, per-user budget caps, role assignment.</sub></td>
+  </tr>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/08-providers.png" alt="Providers" /></td>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/12-keys.png" alt="Keys" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Providers — connect OpenAI / Anthropic / Google / Azure, allowlist models.</sub></td>
+    <td align="center"><sub>Keys — list, revoke, rotate. Plaintext is never re-served.</sub></td>
+  </tr>
+</table>
+
+### 4. Analytics + live audit log
+
+Recharts-driven analytics for tokens, cost, block rate, and latency. The live audit log streams
+events over SSE with auto-pause-on-scroll so reading is never interrupted.
+
+<table>
+  <tr>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/16-analytics.png" alt="Analytics" /></td>
+    <td><img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/screenshots/17-logs.png" alt="Live audit log" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Analytics — tokens / cost / blocks / latency over time.</sub></td>
+    <td align="center"><sub>Live audit log — SSE stream of allow / block / mask events.</sub></td>
+  </tr>
+</table>
 
 ## Quick Start
 
@@ -79,7 +130,7 @@ LeakShield does both, locally. Your prompts never leave your infrastructure unle
 git clone https://github.com/Hesper-Labs/leakshield
 cd leakshield
 docker compose up -d
-# Panel at http://localhost:3000 → setup wizard walks you through:
+# Panel at http://localhost:3000 → setup wizard takes you through:
 #   1. Admin account
 #   2. First provider key (OpenAI/Anthropic/Google/Azure)
 #   3. First virtual key
@@ -134,8 +185,38 @@ flowchart LR
   GW -.->|block / mask| Clients
 ```
 
-Detailed design: [docs/architecture.md](docs/architecture.md). Full HTTP contract:
-[docs/openapi.yaml](docs/openapi.yaml) (with a curl walkthrough in [docs/api.md](docs/api.md)).
+Detailed design lives in the [Wiki](https://github.com/Hesper-Labs/leakshield/wiki) and in
+[docs/architecture.md](docs/architecture.md). Full HTTP contract: [docs/openapi.yaml](docs/openapi.yaml)
+(with a curl walkthrough in [docs/api.md](docs/api.md)).
+
+## Features
+
+- **Multi-protocol native gateway** — OpenAI, Anthropic, Google Gemini, and Azure OpenAI exposed
+  on their own native endpoints (`/openai/v1/*`, `/anthropic/v1/*`, etc.). Existing SDKs and CLIs
+  (OpenAI Python, Anthropic Python, **Claude Code CLI**, Cursor, Aider, Continue.dev) work by just
+  changing the `base_url`.
+- **Per-employee virtual keys** — issue, revoke, rate-limit, and budget-cap keys per user.
+  Master provider keys are stored encrypted under envelope encryption (KEK ⊃ DEK).
+- **Pluggable local DLP** — pick your own model and your own strategy from the admin UI:
+  - Specialized DLP classifiers (Llama Guard 3, ShieldGemma, etc.) — optional convenience
+  - **Any general LLM as a judge** with a custom, admin-editable prompt (Llama 3.2, Qwen 2.5,
+    Mistral, Phi — your call)
+  - Hybrid: Microsoft Presidio (regex/NER, including Turkish-aware recognizers like TC kimlik,
+    IBAN, GSM) escalating ambiguous content to your chosen LLM
+- **Custom DLP policies** — edit the judge prompt in a Monaco-powered editor with a built-in
+  test harness. An adversarial test suite gates deploys so a malicious admin can't ship an
+  "always allow" prompt.
+- **Multi-tenant** — many companies on one deploy, with PostgreSQL row-level security for hard
+  tenant isolation.
+- **Production-ready streaming** — SSE end-to-end with HTTP/2 multiplexing to providers.
+  Optional output-side filtering for response-side leak prevention.
+- **Full audit + analytics** — per-user requests, tokens, cost, blocked categories, latency
+  percentiles. Live audit log via SSE. Tamper-evident hash chain on every record.
+- **No model auto-download** — `docker compose up` works out of the box without pulling any LLM
+  weights. The default inspector backend is a mock filter so you can wire up the gateway end-to-end
+  before deciding which model you want.
+- **On-premise first** — Docker Compose for dev/single-node, Helm chart for Kubernetes. KEK from
+  Vault, AWS KMS, GCP KMS, or Azure Key Vault.
 
 ## Comparison
 
@@ -203,7 +284,7 @@ More: [examples/](examples/).
 | [`deploy/`](deploy/) | Helm chart + production docker-compose |
 | [`docs/`](docs/) | Architecture, security, deployment, provider guides, OpenAPI |
 | [`examples/`](examples/) | Client SDK / CLI examples |
-| [`assets/`](assets/) | Logo + banner art |
+| [`assets/`](assets/) | Logo, banner, screenshots |
 | [`.github/`](.github/) | CI / CodeQL / release workflows, issue templates, CODEOWNERS |
 
 ## Status & Roadmap
@@ -218,31 +299,15 @@ encryption, Helm chart.
   `main`.
 - Vulnerability disclosures and supported versions: [SECURITY.md](SECURITY.md).
 
-## Contributors
+## Documentation
 
-<!-- BEGIN: all-contributors-bot placeholder -->
-<!--
-This section is maintained by the all-contributors bot once it's installed on the repo.
-Until then, contributors are listed in [MAINTAINERS.md](MAINTAINERS.md) and recognised in
-release notes. To add yourself, comment on any open issue or PR with
-`@all-contributors please add @<your-handle> for <type>`.
--->
-<table>
-  <tr>
-    <td align="center" colspan="6">
-      <em>Contributor list will appear here once the all-contributors bot is enabled.</em>
-    </td>
-  </tr>
-</table>
-<!-- END: all-contributors-bot placeholder -->
-
-## Show Your Support
-
-If LeakShield is useful to you:
-
-- [![GitHub stars](https://img.shields.io/github/stars/Hesper-Labs/leakshield?style=social)](https://github.com/Hesper-Labs/leakshield/stargazers) — give the repo a star.
-- Share on [Twitter / X](https://twitter.com/intent/tweet?text=LeakShield%20%E2%80%94%20open-source%20AI%20gateway%20%2B%20DLP%20you%20can%20self-host&url=https%3A%2F%2Fgithub.com%2FHesper-Labs%2Fleakshield), [Bluesky](https://bsky.app/intent/compose?text=LeakShield%20%E2%80%94%20open-source%20AI%20gateway%20%2B%20DLP%20you%20can%20self-host%20https%3A%2F%2Fgithub.com%2FHesper-Labs%2Fleakshield), [LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url=https%3A%2F%2Fgithub.com%2FHesper-Labs%2Fleakshield), or [Hacker News](https://news.ycombinator.com/submitlink?u=https%3A%2F%2Fgithub.com%2FHesper-Labs%2Fleakshield&t=LeakShield%20%E2%80%94%20open-source%20AI%20gateway%20%2B%20DLP).
-- Open an issue with your use case so we know what to prioritise.
+- [Wiki](https://github.com/Hesper-Labs/leakshield/wiki) — long-form guides and how-to articles.
+- [docs/architecture.md](docs/architecture.md) — system architecture.
+- [docs/setup-wizard.md](docs/setup-wizard.md) — five-minute first-run flow.
+- [docs/dlp-categories.md](docs/dlp-categories.md) — DLP category model, built-in vs custom.
+- [docs/openapi.yaml](docs/openapi.yaml) — full HTTP contract (admin + proxy endpoints).
+- [docs/api.md](docs/api.md) — narrative pointer plus a curl walkthrough.
+- [deploy/helm/leakshield/README.md](deploy/helm/leakshield/README.md) — Helm chart values reference.
 
 ## License
 
@@ -253,3 +318,5 @@ If LeakShield is useful to you:
 - [CONTRIBUTING.md](CONTRIBUTING.md) — development setup, testing, PR conventions.
 - [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) — Contributor Covenant 2.1.
 - [SECURITY.md](SECURITY.md) — how to report a vulnerability.
+</content>
+</invoke>

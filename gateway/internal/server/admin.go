@@ -13,11 +13,14 @@ import (
 
 	"github.com/Hesper-Labs/leakshield/gateway/internal/config"
 	"github.com/Hesper-Labs/leakshield/gateway/internal/handlers"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/handlers/admin"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/keys"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/store"
 )
 
-// AdminServer is the internal-only admin API: company/user/key/policy CRUD,
-// audit and analytics endpoints. It is exposed on a separate address so it
-// can be locked down behind a VPN / SSO layer at the ingress.
+// AdminServer is the internal-only admin API. In production this binds to a
+// separate port behind a VPN / SSO ingress. In dev the same routes are also
+// available on the public server (see server.go).
 type AdminServer struct {
 	cfg    *config.Config
 	logger *slog.Logger
@@ -25,13 +28,24 @@ type AdminServer struct {
 	http   *http.Server
 }
 
-// NewAdmin constructs an admin server with placeholder routes.
+// NewAdmin constructs an admin server with the full admin REST API.
 func NewAdmin(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*AdminServer, error) {
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
 	if err := pool.Ping(ctx); err != nil {
+		return nil, err
+	}
+	db := store.New(pool)
+
+	kek, err := initKEK(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	resolver := keys.NewResolver(db, kek, 15*time.Minute)
+	jwtSecret, err := initJWTSecret(cfg, logger)
+	if err != nil {
 		return nil, err
 	}
 
@@ -42,19 +56,7 @@ func NewAdmin(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Ad
 
 	r.Get("/healthz", handlers.Healthz(pool))
 
-	r.Route("/admin/v1", func(r chi.Router) {
-		// Filled in by later phases:
-		//   r.Post("/auth/login", ...)
-		//   r.Post("/auth/bootstrap", ...)
-		//   r.Route("/companies", ...)
-		//   r.Route("/providers", ...)
-		//   r.Route("/users", ...)
-		//   r.Route("/keys", ...)
-		//   r.Route("/policies", ...)
-		//   r.Route("/audit", ...)
-		//   r.Route("/analytics", ...)
-		r.Get("/", handlers.NotImplemented("admin api"))
-	})
+	admin.Mount(r, admin.MountDeps{DB: db, Resolver: resolver, JWTSecret: jwtSecret})
 
 	s := &AdminServer{
 		cfg:    cfg,

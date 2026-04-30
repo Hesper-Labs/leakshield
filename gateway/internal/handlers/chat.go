@@ -11,114 +11,78 @@ import (
 	"os"
 	"strings"
 
+	"github.com/google/uuid"
+
+	gwauth "github.com/Hesper-Labs/leakshield/gateway/internal/auth"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/keys"
 	"github.com/Hesper-Labs/leakshield/gateway/internal/provider"
 )
 
 // maxRequestBody is the largest body the gateway will buffer for
-// inspection. Above this we 413 the client. The number is generous
-// enough to cover any reasonable chat / multimodal payload but keeps
-// memory bounded.
+// inspection. Above this we 413 the client.
 //
 // TODO(phase-policy): make this per-tenant via policy.config.
 const maxRequestBody = 8 * 1024 * 1024 // 8 MiB
 
-// VirtualKey is the placeholder identity carried through the request.
-// The real type lives behind a DB lookup; for now we just remember the
-// presented key prefix and tenant hint so log lines have something.
-//
-// TODO(phase-auth): replace with the resolved virtual_keys row +
-// tenant identifier from internal/auth.
-type VirtualKey struct {
-	LookupPrefix string
-	CompanyID    string
-	Env          string
+// ChatDeps bundles the wiring the chat handler needs. Any nil field falls
+// back to a development-friendly stub so the handler is still usable in
+// unit tests and during early bring-up.
+type ChatDeps struct {
+	Logger   *slog.Logger
+	Verifier *gwauth.VirtualKeyVerifier
+	Resolver *keys.Resolver
 }
 
-// stubVirtualKey reads "Authorization: Bearer gw_<env>_..." and returns
-// a placeholder VirtualKey. Returns nil if the header is missing or
-// malformed; the caller turns that into 401.
-func stubVirtualKey(r *http.Request) *VirtualKey {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		// Anthropic / Azure callers may send the key on a different
-		// header; sniff those too so the placeholder is forgiving.
-		if v := r.Header.Get("x-api-key"); strings.HasPrefix(v, "gw_") {
-			return parseStubBearer(v)
-		}
-		if v := r.Header.Get("api-key"); strings.HasPrefix(v, "gw_") {
-			return parseStubBearer(v)
-		}
-		if v := r.URL.Query().Get("key"); strings.HasPrefix(v, "gw_") {
-			return parseStubBearer(v)
-		}
-		return nil
-	}
-	return parseStubBearer(strings.TrimPrefix(auth, "Bearer "))
-}
-
-func parseStubBearer(token string) *VirtualKey {
-	if !strings.HasPrefix(token, "gw_") {
-		return nil
-	}
-	parts := strings.Split(token, "_")
-	if len(parts) < 3 {
-		return nil
-	}
-	return &VirtualKey{
-		LookupPrefix: parts[0] + "_" + parts[1] + "_" + parts[2],
-		Env:          parts[1],
-		// CompanyID is unknown until we hit the DB.
-		CompanyID: "stub-company",
-	}
-}
-
-// ChatHandler returns an http.HandlerFunc that proxies a request through
-// the named provider adapter. It implements the request flow described
-// in docs/architecture.md:
-//
-//  1. Authenticate the virtual key (placeholder).
-//  2. Resolve the master ProviderKey for the tenant + provider.
-//  3. Extract messages for inspection.
-//  4. Call the inspector (placeholder ALLOW).
-//  5. Forward (or Stream) to the upstream provider.
-//  6. Audit log (placeholder slog INFO).
-//
-// The adapter is constructed from the registry on every call. That keeps
-// the handler itself stateless so wiring can be changed without
-// touching the server bootstrap.
+// ChatHandler is the legacy constructor that wires only a logger.
+// Auth and master-key resolution fall back to the dev-mode stubs (parsing
+// the bearer token without verifying it; reading master keys from
+// LEAKSHIELD_DEV_<PROVIDER>_KEY env vars). Tests use this form.
 func ChatHandler(logger *slog.Logger, providerName string) http.HandlerFunc {
+	return ChatHandlerWithDeps(ChatDeps{Logger: logger}, providerName)
+}
+
+// ChatHandlerWithDeps is the production constructor. When Verifier and
+// Resolver are non-nil the handler authenticates against the database and
+// envelope-decrypts master provider keys.
+func ChatHandlerWithDeps(deps ChatDeps, providerName string) http.HandlerFunc {
+	logger := deps.Logger
+	if logger == nil {
+		logger = slog.Default()
+	}
 	return func(w http.ResponseWriter, r *http.Request) {
 		log := logger.With("provider", providerName, "path", r.URL.Path)
 
-		// 1. Auth (placeholder).
-		// TODO(phase-auth): replace with the real lookup pipeline:
-		//   - Parse with auth.Parse.
-		//   - Argon2id verify against virtual_keys.secret_hash.
-		//   - SET LOCAL app.tenant_id for RLS.
-		//   - Cache the verified row in the LRU.
-		vkey := stubVirtualKey(r)
-		if vkey == nil {
+		// 1. Authenticate the virtual key.
+		vctx, vkey, err := authenticate(r, deps.Verifier)
+		if err != nil {
 			writeJSON(w, http.StatusUnauthorized, map[string]string{
 				"error":   "unauthorized",
-				"message": "missing or malformed virtual key",
+				"message": err.Error(),
 			})
 			return
 		}
 
-		// 2. Resolve master ProviderKey (placeholder: env vars).
-		// TODO(phase-keys): replace with `provider_keys` row lookup +
-		// envelope decryption with the tenant DEK.
-		masterKey, err := devMasterKey(providerName)
+		// 2. Per-key provider allowlist enforcement (DB-backed only).
+		if vctx != nil && len(vctx.AllowedProviders) > 0 && !contains(vctx.AllowedProviders, providerName) {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error":   "provider_not_allowed",
+				"message": fmt.Sprintf("virtual key cannot use provider %q", providerName),
+			})
+			return
+		}
+
+		// 3. Resolve master ProviderKey.
+		masterKey, err := resolveMasterKey(r.Context(), providerName, vctx, deps.Resolver)
 		if err != nil {
 			log.Error("master key unavailable", "error", err)
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{
 				"error":   "no_master_key",
-				"message": fmt.Sprintf("no master key configured for provider %q", providerName),
+				"message": fmt.Sprintf("no master key configured for provider %q: %s", providerName, err.Error()),
 			})
 			return
 		}
 
-		// 3. Construct the adapter and parse the request.
+		// 4. Construct the adapter and parse the request.
 		adapter, err := provider.Lookup(providerName)
 		if err != nil {
 			log.Error("provider lookup failed", "error", err)
@@ -147,14 +111,11 @@ func ChatHandler(logger *slog.Logger, providerName string) http.HandlerFunc {
 			Body:    body,
 		}
 
-		// 4. Extract messages + inspect (placeholder ALLOW).
+		// 5. Extract messages + inspect (placeholder ALLOW until the
+		// gRPC inspector client lands).
 		messages, err := adapter.ExtractMessages(preq)
 		if err != nil {
 			log.Warn("message extraction failed", "error", err)
-			// Extraction failures shouldn't block forwarding — the body
-			// might just be a non-chat shape (embeddings, models). We
-			// fall through with an empty slice; the inspector
-			// placeholder always allows so this stays correct.
 			messages = nil
 		}
 
@@ -178,13 +139,150 @@ func ChatHandler(logger *slog.Logger, providerName string) http.HandlerFunc {
 			}
 		}
 
-		// 5. Decide stream vs non-stream and forward.
+		// 6. Forward (or stream) to the upstream provider.
 		if isStreamRequest(providerName, preq) {
 			handleStream(r.Context(), w, log, adapter, preq, masterKey, vkey, providerName)
 			return
 		}
 		handleForward(r.Context(), w, log, adapter, preq, masterKey, vkey, providerName)
 	}
+}
+
+// VirtualKey is the placeholder identity carried through the request when
+// the verifier hasn't been wired yet (tests, early bring-up).
+type VirtualKey struct {
+	LookupPrefix string
+	CompanyID    string
+	UserID       string
+	Env          string
+}
+
+// authenticate returns either a fully-resolved VirtualKeyContext (DB-backed)
+// or a placeholder VirtualKey (when no verifier is wired). The handler uses
+// the context for allowlist enforcement and master-key resolution; the
+// placeholder is only used for log lines.
+func authenticate(r *http.Request, v *gwauth.VirtualKeyVerifier) (*gwauth.VirtualKeyContext, *VirtualKey, error) {
+	presented := extractPresentedKey(r)
+	if presented == "" {
+		return nil, nil, errors.New("missing virtual key")
+	}
+	if v != nil {
+		ctx, err := v.Verify(r.Context(), presented)
+		if err != nil {
+			return nil, nil, errors.New("invalid virtual key")
+		}
+		return ctx, &VirtualKey{
+			LookupPrefix: lookupPrefixFromKey(presented),
+			CompanyID:    ctx.TenantID.String(),
+			UserID:       ctx.UserID.String(),
+			Env:          envFromKey(presented),
+		}, nil
+	}
+	stub := parseStubBearer(presented)
+	if stub == nil {
+		return nil, nil, errors.New("malformed virtual key")
+	}
+	return nil, stub, nil
+}
+
+func resolveMasterKey(ctx context.Context, providerName string, vctx *gwauth.VirtualKeyContext, resolver *keys.Resolver) (*provider.ProviderKey, error) {
+	if vctx != nil && resolver != nil {
+		plain, mk, err := resolver.MasterKey(ctx, vctx.TenantID, providerName)
+		if err != nil {
+			return nil, err
+		}
+		extra, err := decodeProviderConfig(providerName, mk.Config)
+		if err != nil {
+			return nil, err
+		}
+		return &provider.ProviderKey{Master: plain, Extra: extra}, nil
+	}
+	return devMasterKey(providerName)
+}
+
+func decodeProviderConfig(providerName string, raw []byte) (provider.ProviderKeyExtra, error) {
+	out := provider.ProviderKeyExtra{}
+	if len(raw) == 0 {
+		return out, nil
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return out, fmt.Errorf("decode provider config: %w", err)
+	}
+	if v, ok := cfg["openai_org_id"].(string); ok {
+		out.OpenAIOrgID = v
+	}
+	if v, ok := cfg["azure_endpoint"].(string); ok {
+		out.AzureEndpoint = v
+	}
+	if v, ok := cfg["azure_api_version"].(string); ok {
+		out.AzureAPIVersion = v
+	}
+	if v, ok := cfg["azure_deployments"].(map[string]any); ok {
+		out.AzureDeployments = make(map[string]string, len(v))
+		for k, vv := range v {
+			if s, ok := vv.(string); ok {
+				out.AzureDeployments[k] = s
+			}
+		}
+	}
+	_ = providerName
+	return out, nil
+}
+
+func extractPresentedKey(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+	if v := r.Header.Get("x-api-key"); v != "" {
+		return v
+	}
+	if v := r.Header.Get("api-key"); v != "" {
+		return v
+	}
+	if v := r.URL.Query().Get("key"); v != "" {
+		return v
+	}
+	return ""
+}
+
+// stubVirtualKey is the legacy helper used by chat_test.go. Production
+// code paths go through `authenticate`; this wrapper keeps the existing
+// extraction-and-parse coverage intact.
+func stubVirtualKey(r *http.Request) *VirtualKey {
+	return parseStubBearer(extractPresentedKey(r))
+}
+
+func parseStubBearer(token string) *VirtualKey {
+	if !strings.HasPrefix(token, "gw_") {
+		return nil
+	}
+	parts := strings.Split(token, "_")
+	if len(parts) < 3 {
+		return nil
+	}
+	return &VirtualKey{
+		LookupPrefix: parts[0] + "_" + parts[1] + "_" + parts[2],
+		Env:          parts[1],
+		CompanyID:    "stub-company",
+	}
+}
+
+func lookupPrefixFromKey(token string) string {
+	parts := strings.Split(token, "_")
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[0] + "_" + parts[1] + "_" + parts[2]
+}
+
+func envFromKey(token string) string {
+	parts := strings.Split(token, "_")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[1]
 }
 
 // Decision is the placeholder enum used until the gRPC inspector client
@@ -204,36 +302,38 @@ const (
 // production client will call leakshield.inspector.v1.InspectPrompt with
 // the messages and the policy.config blob.
 //
-// TODO(phase-inspector): replace with the gRPC client. The signature
-// here is intentionally close to the real one so the swap is mechanical.
+// TODO(phase-inspector): replace with the gRPC client.
 func inspectorPlaceholder(_ context.Context, _ *VirtualKey, _ []provider.Message) (Decision, []provider.Message) {
 	return DecisionAllow, nil
 }
 
 // auditPlaceholder writes a structured log line in lieu of the real
-// audit_log INSERT. The hash-chained, tenant-partitioned table comes
-// later.
+// audit_log INSERT.
 //
-// TODO(phase-audit): replace with the audit_log writer that emits to
-// the bounded ring buffer + Postgres COPY worker.
+// TODO(phase-audit): replace with the audit_log writer.
 func auditPlaceholder(log *slog.Logger, vkey *VirtualKey, providerName, decision string) {
+	if vkey == nil {
+		log.Info("audit",
+			"provider", providerName,
+			"decision", decision,
+		)
+		return
+	}
 	log.Info("audit",
 		"company_id", vkey.CompanyID,
 		"key_prefix", vkey.LookupPrefix,
+		"user_id", vkey.UserID,
 		"provider", providerName,
 		"decision", decision,
 	)
 }
 
 func devMasterKey(providerName string) (*provider.ProviderKey, error) {
-	// TODO(phase-keys): replace with envelope-decrypted tenant key. The
-	// env-var path is dev-only convenience; production refuses to start
-	// without the real KMS pipeline.
 	switch providerName {
 	case "openai":
 		k := os.Getenv("LEAKSHIELD_DEV_OPENAI_KEY")
 		if k == "" {
-			return nil, errors.New("LEAKSHIELD_DEV_OPENAI_KEY unset")
+			return nil, errors.New("LEAKSHIELD_DEV_OPENAI_KEY unset (no DB-backed key configured)")
 		}
 		return &provider.ProviderKey{
 			Master: k,
@@ -242,19 +342,19 @@ func devMasterKey(providerName string) (*provider.ProviderKey, error) {
 	case "anthropic":
 		k := os.Getenv("LEAKSHIELD_DEV_ANTHROPIC_KEY")
 		if k == "" {
-			return nil, errors.New("LEAKSHIELD_DEV_ANTHROPIC_KEY unset")
+			return nil, errors.New("LEAKSHIELD_DEV_ANTHROPIC_KEY unset (no DB-backed key configured)")
 		}
 		return &provider.ProviderKey{Master: k}, nil
 	case "google":
 		k := os.Getenv("LEAKSHIELD_DEV_GOOGLE_KEY")
 		if k == "" {
-			return nil, errors.New("LEAKSHIELD_DEV_GOOGLE_KEY unset")
+			return nil, errors.New("LEAKSHIELD_DEV_GOOGLE_KEY unset (no DB-backed key configured)")
 		}
 		return &provider.ProviderKey{Master: k}, nil
 	case "azure":
 		k := os.Getenv("LEAKSHIELD_DEV_AZURE_KEY")
 		if k == "" {
-			return nil, errors.New("LEAKSHIELD_DEV_AZURE_KEY unset")
+			return nil, errors.New("LEAKSHIELD_DEV_AZURE_KEY unset (no DB-backed key configured)")
 		}
 		return &provider.ProviderKey{
 			Master: k,
@@ -267,8 +367,6 @@ func devMasterKey(providerName string) (*provider.ProviderKey, error) {
 	return nil, fmt.Errorf("unknown provider %q", providerName)
 }
 
-// isStreamRequest checks whether the client asked for SSE. OpenAI /
-// Anthropic / Azure use a body field; Google encodes it in the URL.
 func isStreamRequest(providerName string, req *provider.PassthroughRequest) bool {
 	switch providerName {
 	case "google":
@@ -307,9 +405,6 @@ func handleForward(
 		return
 	}
 	for k, vs := range resp.Headers {
-		// Drop any hop-by-hop / transport-control headers from the
-		// upstream so they don't confuse the client. The shared SSE
-		// reader already handles these for streams.
 		if isHopByHopResponse(k) {
 			continue
 		}
@@ -380,3 +475,15 @@ func isHopByHopResponse(h string) bool {
 	}
 	return false
 }
+
+func contains(haystack []string, needle string) bool {
+	for _, h := range haystack {
+		if h == needle {
+			return true
+		}
+	}
+	return false
+}
+
+// keep uuid imported (used by some downstream callers when stubbing).
+var _ uuid.UUID

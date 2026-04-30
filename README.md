@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/logo.svg" alt="LeakShield" width="200" />
+<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/logo.png" alt="LeakShield" width="200" />
 
 # LeakShield
 
@@ -18,7 +18,7 @@
 
 </div>
 
-<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/banner.svg" alt="LeakShield architecture banner" />
+<img src="https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/banner.png" alt="LeakShield architecture banner" />
 
 LeakShield is an open-source **AI Gateway + DLP** that sits between your employees and the LLM
 providers they use (OpenAI, Anthropic, Google, Azure). It isolates provider keys, inspects every

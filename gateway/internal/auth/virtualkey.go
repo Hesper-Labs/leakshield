@@ -54,9 +54,11 @@ type ParsedKey struct {
 	LookupPrefix string
 }
 
-// Parse decomposes a "gw_<env>_<prefix>_<secret>" key.
+// Parse decomposes a "gw_<env>_<prefix>_<secret>" key. The secret may
+// itself contain underscores (it's URL-safe base64), so we split at most
+// three times.
 func Parse(key string) (*ParsedKey, error) {
-	parts := strings.Split(key, "_")
+	parts := strings.SplitN(key, "_", keyPartsCount)
 	if len(parts) != keyPartsCount {
 		return nil, ErrMalformedKey
 	}

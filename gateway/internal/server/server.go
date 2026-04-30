@@ -13,8 +13,12 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	gwauth "github.com/Hesper-Labs/leakshield/gateway/internal/auth"
 	"github.com/Hesper-Labs/leakshield/gateway/internal/config"
 	"github.com/Hesper-Labs/leakshield/gateway/internal/handlers"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/handlers/admin"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/keys"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/store"
 
 	// Side-effect imports register the provider adapters with the
 	// global registry. Any new adapter must be added here.
@@ -25,6 +29,9 @@ import (
 )
 
 // Server is the public-facing gateway: proxy endpoints + health checks.
+// In dev it also mounts the admin routes on the same port for ergonomics;
+// production deploys should run a separate `leakshield admin` instance
+// behind an internal-only ingress.
 type Server struct {
 	cfg    *config.Config
 	logger *slog.Logger
@@ -33,14 +40,24 @@ type Server struct {
 }
 
 // New constructs a public gateway server with all routes registered.
-// The provider proxy handlers are placeholders until the per-provider
-// adapters land in subsequent phases.
 func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Server, error) {
 	pool, err := pgxpool.New(ctx, cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
 	if err := pool.Ping(ctx); err != nil {
+		return nil, err
+	}
+	db := store.New(pool)
+
+	kek, err := initKEK(cfg, logger)
+	if err != nil {
+		return nil, err
+	}
+	resolver := keys.NewResolver(db, kek, 15*time.Minute)
+	verifier := gwauth.NewVirtualKeyVerifier(db)
+	jwtSecret, err := initJWTSecret(cfg, logger)
+	if err != nil {
 		return nil, err
 	}
 
@@ -54,9 +71,13 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Server,
 	r.Get("/healthz", handlers.Healthz(pool))
 	r.Get("/readyz", handlers.Readyz(pool))
 
+	// Admin REST API (dev convenience: same port as the proxy).
+	admin.Mount(r, admin.MountDeps{DB: db, Resolver: resolver, JWTSecret: jwtSecret})
+
 	// Provider native endpoints. Each prefix dispatches to the
 	// matching adapter via internal/provider's registry.
-	openaiHandler := handlers.ChatHandler(logger, "openai")
+	chatDeps := handlers.ChatDeps{Logger: logger, Verifier: verifier, Resolver: resolver}
+	openaiHandler := handlers.ChatHandlerWithDeps(chatDeps, "openai")
 	r.Route("/openai/v1", func(r chi.Router) {
 		r.Post("/chat/completions", openaiHandler)
 		r.Post("/embeddings", openaiHandler)
@@ -64,27 +85,25 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Server,
 		r.Get("/models", openaiHandler)
 	})
 
-	anthropicHandler := handlers.ChatHandler(logger, "anthropic")
+	anthropicHandler := handlers.ChatHandlerWithDeps(chatDeps, "anthropic")
 	r.Route("/anthropic/v1", func(r chi.Router) {
 		r.Post("/messages", anthropicHandler)
 		r.Post("/messages/count_tokens", anthropicHandler)
 	})
 
-	googleHandler := handlers.ChatHandler(logger, "google")
+	googleHandler := handlers.ChatHandlerWithDeps(chatDeps, "google")
 	r.Route("/google/v1beta", func(r chi.Router) {
 		r.Post("/models/*", googleHandler)
 	})
 
-	azureHandler := handlers.ChatHandler(logger, "azure")
+	azureHandler := handlers.ChatHandlerWithDeps(chatDeps, "azure")
 	r.Route("/azure/openai", func(r chi.Router) {
 		r.Post("/deployments/*", azureHandler)
 	})
 
 	// Universal OpenAI-compatible router (LiteLLM-style, optional).
 	// TODO(phase-router): route by virtual key policy or `model`
-	// heuristic to the appropriate adapter, translating only what is
-	// strictly necessary. Until that lands, return NotImplemented so
-	// callers don't silently misbehave.
+	// heuristic to the appropriate adapter.
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/chat/completions", handlers.NotImplemented("universal router chat"))
 	})

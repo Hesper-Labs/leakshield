@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM golang:1.23-alpine AS build
+FROM golang:1.26-alpine AS build
 WORKDIR /src
 RUN apk add --no-cache git
 COPY go.mod go.sum* ./
@@ -10,7 +10,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -ldflags="-s -w -X main.version=${VERSION}" \
     -o /out/leakshield ./cmd/leakshield
 
-FROM alpine:3.20
+FROM alpine:3.23
 RUN apk add --no-cache ca-certificates wget && \
     addgroup -S leakshield && adduser -S -G leakshield leakshield && \
     mkdir -p /var/lib/leakshield && chown leakshield:leakshield /var/lib/leakshield

@@ -1,0 +1,191 @@
+# Production-flavoured docker-compose for single-node deployments.
+#
+# Differences vs. the repository-root development docker-compose.yml:
+#   - Postgres and Redis are external by default. Set the *_URL variables in
+#     ~/.config/leakshield/.env (an env-file that should NEVER be committed).
+#   - All services pull pinned `:latest` images from GHCR rather than building
+#     from local source. Override `LEAKSHIELD_VERSION` in .env to pin.
+#   - Restart policies, log rotation, and read-only root filesystems are
+#     configured for unattended operation.
+#   - The optional Caddy reverse proxy block at the bottom terminates TLS,
+#     issues certs via Let's Encrypt, and routes /openai /anthropic /google
+#     /azure /v1 to the gateway and everything else to the panel. Uncomment
+#     once your DNS points at this host.
+#
+# Usage:
+#   mkdir -p ~/.config/leakshield
+#   cp deploy/compose/leakshield.env.example ~/.config/leakshield/.env
+#   # edit ~/.config/leakshield/.env
+#   docker compose -f deploy/compose/docker-compose.prod.yml --env-file ~/.config/leakshield/.env up -d
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "10"
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  inspector:
+    image: ghcr.io/hesper-labs/leakshield-inspector:${LEAKSHIELD_VERSION:-latest}
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      LEAKSHIELD_INSPECTOR_PORT: "50051"
+      LEAKSHIELD_INSPECTOR_BACKEND: ${LEAKSHIELD_INSPECTOR_BACKEND:-mock}
+      LEAKSHIELD_INSPECTOR_BACKEND_URL: ${LEAKSHIELD_INSPECTOR_BACKEND_URL:-}
+      LEAKSHIELD_INSPECTOR_JUDGE_MODEL: ${LEAKSHIELD_INSPECTOR_JUDGE_MODEL:-qwen2.5:3b-instruct}
+      LEAKSHIELD_INSPECTOR_LOG_LEVEL: ${LEAKSHIELD_LOG_LEVEL:-info}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    expose:
+      - "50051"
+    healthcheck:
+      test: ["CMD", "python", "-m", "leakshield_inspector.healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [leakshield]
+
+  gateway:
+    image: ghcr.io/hesper-labs/leakshield-gateway:${LEAKSHIELD_VERSION:-latest}
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      LEAKSHIELD_HTTP_ADDR: "0.0.0.0:8080"
+      # Must point at a managed Postgres (RDS, Cloud SQL, on-prem cluster).
+      # Format: postgres://user:password@host:5432/leakshield?sslmode=require
+      LEAKSHIELD_DATABASE_URL: ${LEAKSHIELD_DATABASE_URL:?LEAKSHIELD_DATABASE_URL is required}
+      LEAKSHIELD_REDIS_URL: ${LEAKSHIELD_REDIS_URL:?LEAKSHIELD_REDIS_URL is required}
+      LEAKSHIELD_INSPECTOR_ADDR: inspector:50051
+      # KEK provider: vault | aws | gcp | azure | local. `local` is dev only.
+      LEAKSHIELD_KEK_PROVIDER: ${LEAKSHIELD_KEK_PROVIDER:?LEAKSHIELD_KEK_PROVIDER is required}
+      LEAKSHIELD_KEK_VAULT_ADDR: ${LEAKSHIELD_KEK_VAULT_ADDR:-}
+      LEAKSHIELD_KEK_VAULT_TRANSIT_PATH: ${LEAKSHIELD_KEK_VAULT_TRANSIT_PATH:-}
+      LEAKSHIELD_KEK_AWS_REGION: ${LEAKSHIELD_KEK_AWS_REGION:-}
+      LEAKSHIELD_KEK_AWS_KEY_ID: ${LEAKSHIELD_KEK_AWS_KEY_ID:-}
+      LEAKSHIELD_KEK_GCP_PROJECT: ${LEAKSHIELD_KEK_GCP_PROJECT:-}
+      LEAKSHIELD_KEK_GCP_KEY_RING: ${LEAKSHIELD_KEK_GCP_KEY_RING:-}
+      LEAKSHIELD_KEK_GCP_KEY_NAME: ${LEAKSHIELD_KEK_GCP_KEY_NAME:-}
+      LEAKSHIELD_KEK_AZURE_VAULT_URL: ${LEAKSHIELD_KEK_AZURE_VAULT_URL:-}
+      LEAKSHIELD_KEK_AZURE_KEY_NAME: ${LEAKSHIELD_KEK_AZURE_KEY_NAME:-}
+      LEAKSHIELD_JWT_SECRET: ${LEAKSHIELD_JWT_SECRET:?LEAKSHIELD_JWT_SECRET is required}
+      LEAKSHIELD_LOG_LEVEL: ${LEAKSHIELD_LOG_LEVEL:-info}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    expose:
+      - "8080"
+    depends_on:
+      inspector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      # Mount Vault / cloud KMS material if your KEK provider needs a token
+      # or token file on disk. Read-only.
+      - ${LEAKSHIELD_KEK_MOUNT_SOURCE:-/dev/null}:${LEAKSHIELD_KEK_MOUNT_TARGET:-/run/leakshield/kek}:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [leakshield]
+
+  panel:
+    image: ghcr.io/hesper-labs/leakshield-panel:${LEAKSHIELD_VERSION:-latest}
+    <<: *default-restart
+    logging: *default-logging
+    environment:
+      NEXT_PUBLIC_API_URL: ${LEAKSHIELD_PUBLIC_GATEWAY_URL:-http://gateway:8080}
+      AUTH_SECRET: ${LEAKSHIELD_JWT_SECRET}
+      AUTH_TRUST_HOST: "true"
+    expose:
+      - "3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks: [leakshield]
+
+  # ---------------------------------------------------------------------------
+  # Optional reverse proxy. Uncomment to terminate TLS at this host. Caddy
+  # auto-issues certificates via Let's Encrypt for the configured domain.
+  # ---------------------------------------------------------------------------
+  # caddy:
+  #   image: caddy:2-alpine
+  #   <<: *default-restart
+  #   logging: *default-logging
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   environment:
+  #     LEAKSHIELD_DOMAIN: ${LEAKSHIELD_DOMAIN:?LEAKSHIELD_DOMAIN is required}
+  #   volumes:
+  #     - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+  #     - caddy-data:/data
+  #     - caddy-config:/config
+  #   depends_on:
+  #     - gateway
+  #     - panel
+  #   networks: [leakshield]
+  #
+  # # Sample Caddyfile (./caddy/Caddyfile):
+  # #   {$LEAKSHIELD_DOMAIN} {
+  # #       encode zstd gzip
+  # #       @gateway path /openai/* /anthropic/* /google/* /azure/* /v1/*
+  # #       reverse_proxy @gateway gateway:8080
+  # #       reverse_proxy panel:3000
+  # #   }
+  #
+  # ---------------------------------------------------------------------------
+  # Alternative: Traefik. Uncomment instead of Caddy.
+  # ---------------------------------------------------------------------------
+  # traefik:
+  #   image: traefik:v3.1
+  #   <<: *default-restart
+  #   logging: *default-logging
+  #   command:
+  #     - --providers.docker=true
+  #     - --providers.docker.exposedbydefault=false
+  #     - --entrypoints.web.address=:80
+  #     - --entrypoints.websecure.address=:443
+  #     - --certificatesresolvers.le.acme.email=admin@${LEAKSHIELD_DOMAIN}
+  #     - --certificatesresolvers.le.acme.storage=/letsencrypt/acme.json
+  #     - --certificatesresolvers.le.acme.tlschallenge=true
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - traefik-letsencrypt:/letsencrypt
+  #   networks: [leakshield]
+
+networks:
+  leakshield:
+    driver: bridge
+
+# Uncomment volumes alongside the matching reverse proxy block.
+# volumes:
+#   caddy-data:
+#   caddy-config:
+#   traefik-letsencrypt:

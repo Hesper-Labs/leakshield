@@ -1,0 +1,44 @@
+{{ .Chart.Name }} {{ .Chart.AppVersion }} installed in namespace "{{ .Release.Namespace }}".
+
+Components:
+  - gateway:   {{ include "leakshield.componentName" (list . "gateway") }}.{{ .Release.Namespace }} (port {{ .Values.gateway.service.port }})
+  - inspector: {{ include "leakshield.componentName" (list . "inspector") }}.{{ .Release.Namespace }} (port {{ .Values.inspector.service.port }})
+  - panel:     {{ include "leakshield.componentName" (list . "panel") }}.{{ .Release.Namespace }} (port {{ .Values.panel.service.port }})
+{{- if .Values.postgres.enabled }}
+  - postgres:  {{ include "leakshield.fullname" . }}-postgres.{{ .Release.Namespace }}:5432 (bundled)
+{{- else if .Values.postgres.externalDatabaseUrl }}
+  - postgres:  external (set via postgres.externalDatabaseUrl)
+{{- end }}
+{{- if .Values.redis.enabled }}
+  - redis:     {{ include "leakshield.fullname" . }}-redis.{{ .Release.Namespace }}:6379 (bundled)
+{{- else if .Values.redis.externalUrl }}
+  - redis:     external (set via redis.externalUrl)
+{{- end }}
+
+Next steps:
+
+{{- if .Values.ingress.enabled }}
+  1. Visit your panel at  http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.host }}/
+  2. Run the setup wizard:
+       - create the first admin
+       - add a master provider key (OpenAI / Anthropic / Google / Azure)
+       - mint your first virtual key
+       - choose a DLP strategy (default `mock` allows everything until you flip it)
+       - send a test request
+{{- else }}
+  1. Port-forward the panel:
+       kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "leakshield.componentName" (list . "panel") }} {{ .Values.panel.service.port }}:{{ .Values.panel.service.port }}
+     and open http://localhost:{{ .Values.panel.service.port }}/
+  2. Run the setup wizard inside the panel.
+{{- end }}
+
+Inspector backend is currently `{{ .Values.inspector.backend }}`. Switch to `ollama`,
+`vllm`, `llamacpp`, or `openai_compat` from the panel once you have a model server
+running. LeakShield does not download models for you.
+
+{{- if and (not .Values.ingress.enabled) (not (or .Values.kek.secretName (ne .Values.kek.provider "local"))) }}
+
+WARNING: KEK provider is `local` and a Secret was generated for you. For any
+non-development cluster, switch `kek.provider` to `vault`, `aws`, `gcp`, or
+`azure`, and let your KMS hold the master key.
+{{- end }}

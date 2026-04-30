@@ -1,0 +1,1801 @@
+openapi: 3.1.0
+info:
+  title: LeakShield Admin & Proxy API
+  version: 0.1.0
+  summary: AI gateway and DLP control plane.
+  description: |
+    The LeakShield API is split into two surfaces:
+
+    - The **admin API** (`/admin/v1/*`) — used by the panel and operators to
+      manage providers, users, virtual keys, DLP policies, and to read audit
+      and analytics data.
+    - The **proxy API** — provider-native endpoints (`/openai/*`,
+      `/anthropic/*`, `/google/v1beta/*`, `/azure/openai/*`) and an optional
+      universal router (`/v1/chat/completions`). These accept the upstream
+      provider's request body verbatim. LeakShield inspects the payload, then
+      forwards or blocks it, so existing SDKs work with only a `base_url`
+      change.
+
+    All admin endpoints expect `Authorization: Bearer <session_token>`. The
+    proxy endpoints expect `Authorization: Bearer gw_live_<...>` or the
+    provider-native header (`x-api-key` for Anthropic, `api-key` for Azure).
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+  contact:
+    name: LeakShield maintainers
+    url: https://github.com/Hesper-Labs/leakshield
+
+servers:
+  - url: https://leakshield.example.com
+    description: Self-hosted production
+  - url: http://localhost:8080
+    description: Local development
+
+tags:
+  - name: setup
+    description: Initial install / bootstrap.
+  - name: auth
+    description: Admin authentication.
+  - name: providers
+    description: Master provider keys (OpenAI / Anthropic / Google / Azure).
+  - name: users
+    description: Employees who consume LLM APIs.
+  - name: keys
+    description: Per-employee virtual keys.
+  - name: policies
+    description: DLP policies.
+  - name: audit
+    description: Audit log + tamper-evidence.
+  - name: analytics
+    description: Aggregated usage, cost, and block counts.
+  - name: stream
+    description: Server-Sent Events for live data.
+  - name: proxy
+    description: Pass-through provider proxy paths.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ===========================================================================
+  # Setup
+  # ===========================================================================
+  /admin/v1/setup/status:
+    get:
+      tags: [setup]
+      summary: Has the install been bootstrapped?
+      description: Anonymous — used by the panel to decide whether to render the bootstrap or login screen.
+      security: []
+      responses:
+        '200':
+          description: Setup status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetupStatus'
+
+  /admin/v1/auth/bootstrap:
+    post:
+      tags: [setup, auth]
+      summary: Create the first admin and the first company tenant.
+      description: |
+        Only callable when `setup.completed = false`. Subsequent calls return
+        409. After this call returns 200, login flows take over.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BootstrapRequest'
+      responses:
+        '200':
+          description: Bootstrap accepted; admin session issued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ===========================================================================
+  # Auth
+  # ===========================================================================
+  /admin/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Exchange admin email + password for a session token.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/v1/auth/logout:
+    post:
+      tags: [auth]
+      summary: Invalidate the current session token.
+      responses:
+        '204':
+          description: Logged out
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/v1/me:
+    get:
+      tags: [auth]
+      summary: Current admin profile + capabilities.
+      responses:
+        '200':
+          description: Profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MeResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ===========================================================================
+  # Providers
+  # ===========================================================================
+  /admin/v1/providers:
+    get:
+      tags: [providers]
+      summary: List master provider keys for the active company.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - in: query
+          name: provider
+          schema:
+            $ref: '#/components/schemas/ProviderName'
+        - in: query
+          name: include_inactive
+          schema:
+            type: boolean
+            default: false
+      responses:
+        '200':
+          description: Page of providers
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageEnvelope'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Provider'
+    post:
+      tags: [providers]
+      summary: Add a master provider key.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderCreate'
+      responses:
+        '201':
+          description: Provider key stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  /admin/v1/providers/test:
+    post:
+      tags: [providers]
+      summary: Probe a provider key without persisting it.
+      description: |
+        Issues a no-op request to the provider (e.g. `GET /v1/models` for
+        OpenAI) to check that the key is valid and the chosen base URL is
+        reachable.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderTestRequest'
+      responses:
+        '200':
+          description: Probe result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProviderTestResult'
+
+  /admin/v1/providers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    patch:
+      tags: [providers]
+      summary: Update label, config, or active state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProviderUpdate'
+      responses:
+        '200':
+          description: Updated provider
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Provider'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [providers]
+      summary: Soft-delete a provider key.
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # Users
+  # ===========================================================================
+  /admin/v1/users:
+    get:
+      tags: [users]
+      summary: List users in the active company.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - in: query
+          name: q
+          description: Free-text filter on name / email / department.
+          schema:
+            type: string
+        - in: query
+          name: department
+          schema:
+            type: string
+        - in: query
+          name: is_active
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Page of users
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageEnvelope'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/User'
+    post:
+      tags: [users]
+      summary: Create a single user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /admin/v1/users/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    get:
+      tags: [users]
+      summary: Read a single user.
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [users]
+      summary: Update fields on a user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdate'
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [users]
+      summary: Soft-delete a user (revokes all virtual keys).
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/v1/users/import:
+    post:
+      tags: [users]
+      summary: Bulk-import users from CSV.
+      requestBody:
+        required: true
+        content:
+          text/csv:
+            schema:
+              type: string
+              format: binary
+            example: |
+              email,name,surname,department
+              ada@example.com,Ada,Lovelace,Engineering
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserImportResult'
+        '422':
+          $ref: '#/components/responses/UnprocessableEntity'
+
+  # ===========================================================================
+  # Virtual keys
+  # ===========================================================================
+  /admin/v1/users/{id}/keys:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    get:
+      tags: [keys]
+      summary: List a user's virtual keys.
+      responses:
+        '200':
+          description: Keys for the user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VirtualKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [keys]
+      summary: Mint a new virtual key for the user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VirtualKeyCreate'
+      responses:
+        '201':
+          description: Key minted (the plaintext is returned ONCE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VirtualKeyMinted'
+
+  /admin/v1/keys/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    delete:
+      tags: [keys]
+      summary: Revoke a virtual key.
+      responses:
+        '204':
+          description: Revoked
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/v1/keys/{id}/rotate:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    post:
+      tags: [keys]
+      summary: Rotate a virtual key (new secret, same id record kept for audit linkage).
+      responses:
+        '200':
+          description: Newly rotated key (plaintext returned ONCE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VirtualKeyMinted'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ===========================================================================
+  # DLP policies
+  # ===========================================================================
+  /admin/v1/policies:
+    get:
+      tags: [policies]
+      summary: List DLP policies for the active company.
+      responses:
+        '200':
+          description: Policies
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DLPPolicy'
+    post:
+      tags: [policies]
+      summary: Create a DLP policy.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DLPPolicyCreate'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DLPPolicy'
+
+  /admin/v1/policies/{id}:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    put:
+      tags: [policies]
+      summary: Replace a DLP policy with a new version.
+      description: |
+        The policy's `version` increments on every successful PUT. The previous
+        revision is preserved in `policy_versions` (returned by
+        `GET /admin/v1/policies/{id}/versions`).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DLPPolicyUpdate'
+      responses:
+        '200':
+          description: New active policy version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DLPPolicy'
+        '422':
+          description: Adversarial test suite blocked the deploy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyTestResult'
+
+  /admin/v1/policies/{id}/versions:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    get:
+      tags: [policies]
+      summary: Version history for a policy.
+      responses:
+        '200':
+          description: Append-only history
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PolicyVersion'
+
+  /admin/v1/policies/{id}/test:
+    parameters:
+      - $ref: '#/components/parameters/IdParam'
+    post:
+      tags: [policies]
+      summary: Run a single inspection against the policy without persisting it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyTestRequest'
+      responses:
+        '200':
+          description: Inspection result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyTestResult'
+
+  # ===========================================================================
+  # Audit + analytics
+  # ===========================================================================
+  /admin/v1/audit:
+    get:
+      tags: [audit]
+      summary: Search audit log entries.
+      parameters:
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/PageSizeParam'
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date-time
+        - in: query
+          name: user_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: virtual_key_id
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: provider
+          schema:
+            $ref: '#/components/schemas/ProviderName'
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/Decision'
+        - in: query
+          name: q
+          description: Free-text search on `verdict_reason` / `prompt_preview`.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Page of audit entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PageEnvelope'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AuditLogEntry'
+
+  /admin/v1/audit/{request_id}:
+    parameters:
+      - in: path
+        name: request_id
+        required: true
+        schema:
+          type: string
+          format: uuid
+    get:
+      tags: [audit]
+      summary: Read an audit log entry by request id.
+      responses:
+        '200':
+          description: Audit entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditLogEntry'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/v1/analytics/usage:
+    get:
+      tags: [analytics]
+      summary: Usage buckets (requests, tokens) across a window.
+      parameters:
+        - $ref: '#/components/parameters/RangeFromParam'
+        - $ref: '#/components/parameters/RangeToParam'
+        - $ref: '#/components/parameters/GroupByParam'
+        - in: query
+          name: provider
+          schema:
+            $ref: '#/components/schemas/ProviderName'
+        - in: query
+          name: user_id
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Usage time series
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UsageBucket'
+
+  /admin/v1/analytics/cost:
+    get:
+      tags: [analytics]
+      summary: Cost buckets across a window (USD micros).
+      parameters:
+        - $ref: '#/components/parameters/RangeFromParam'
+        - $ref: '#/components/parameters/RangeToParam'
+        - $ref: '#/components/parameters/GroupByParam'
+        - in: query
+          name: provider
+          schema:
+            $ref: '#/components/schemas/ProviderName'
+      responses:
+        '200':
+          description: Cost time series
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CostBucket'
+
+  /admin/v1/analytics/blocks:
+    get:
+      tags: [analytics]
+      summary: Blocked / masked counts grouped by category.
+      parameters:
+        - $ref: '#/components/parameters/RangeFromParam'
+        - $ref: '#/components/parameters/RangeToParam'
+        - $ref: '#/components/parameters/GroupByParam'
+      responses:
+        '200':
+          description: Block counts time series
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BlockBucket'
+
+  # ===========================================================================
+  # Streams
+  # ===========================================================================
+  /admin/v1/stream/logs:
+    get:
+      tags: [stream]
+      summary: Live audit log via Server-Sent Events.
+      description: |
+        Long-lived SSE connection. Each event has an `audit_id` and a JSON
+        payload matching `AuditLogEntry`. Reconnect with `Last-Event-ID` to
+        resume.
+      parameters:
+        - in: query
+          name: provider
+          schema:
+            $ref: '#/components/schemas/ProviderName'
+        - in: query
+          name: status
+          schema:
+            $ref: '#/components/schemas/Decision'
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: SSE events of `AuditLogEntry` payloads.
+
+  # ===========================================================================
+  # Proxy
+  # ===========================================================================
+  /openai/v1/chat/completions:
+    post:
+      tags: [proxy]
+      summary: OpenAI Chat Completions (pass-through).
+      description: |
+        Accepts the upstream OpenAI request body verbatim. Streaming is
+        supported when the body sets `stream: true`. Authenticate with
+        `Authorization: Bearer gw_live_<...>`.
+      security:
+        - virtualKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassthroughBody'
+      responses:
+        '200':
+          description: Provider response (non-streaming)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+        '403':
+          $ref: '#/components/responses/Blocked'
+
+  /openai/v1/embeddings:
+    post:
+      tags: [proxy]
+      summary: OpenAI Embeddings (pass-through).
+      security:
+        - virtualKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassthroughBody'
+      responses:
+        '200':
+          description: Provider response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+        '403':
+          $ref: '#/components/responses/Blocked'
+
+  /openai/v1/models:
+    get:
+      tags: [proxy]
+      summary: OpenAI Models list (pass-through).
+      security:
+        - virtualKeyAuth: []
+      responses:
+        '200':
+          description: Provider response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+
+  /anthropic/v1/messages:
+    post:
+      tags: [proxy]
+      summary: Anthropic Messages API (pass-through).
+      description: Authenticate with `x-api-key: gw_live_<...>` (Anthropic-style).
+      security:
+        - anthropicKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassthroughBody'
+      responses:
+        '200':
+          description: Provider response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+        '403':
+          $ref: '#/components/responses/Blocked'
+
+  /google/v1beta/{path}:
+    post:
+      tags: [proxy]
+      summary: Google Generative Language API (pass-through).
+      description: |
+        Catch-all for the Gemini API surface
+        (`models/{model}:generateContent`, `:streamGenerateContent`,
+        `:embedContent`, etc.). Authenticate with
+        `Authorization: Bearer gw_live_<...>`.
+      parameters:
+        - in: path
+          name: path
+          required: true
+          schema:
+            type: string
+          description: Sub-path under `v1beta` (e.g. `models/gemini-1.5-pro:generateContent`).
+      security:
+        - virtualKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassthroughBody'
+      responses:
+        '200':
+          description: Provider response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+        '403':
+          $ref: '#/components/responses/Blocked'
+
+  /azure/openai/deployments/{deployment}/chat/completions:
+    post:
+      tags: [proxy]
+      summary: Azure OpenAI deployment chat completions (pass-through).
+      description: |
+        Authenticate with `api-key: gw_live_<...>` (Azure-style). The
+        `api-version` query parameter is forwarded verbatim.
+      parameters:
+        - in: path
+          name: deployment
+          required: true
+          schema:
+            type: string
+        - in: query
+          name: api-version
+          required: true
+          schema:
+            type: string
+      security:
+        - azureKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassthroughBody'
+      responses:
+        '200':
+          description: Provider response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+        '403':
+          $ref: '#/components/responses/Blocked'
+
+  /v1/chat/completions:
+    post:
+      tags: [proxy]
+      summary: Universal router (LiteLLM-style OpenAI shape).
+      description: |
+        Accepts an OpenAI-shaped chat completion. The gateway routes by virtual
+        key policy or by the `model` field heuristic. Useful for clients that
+        cannot change `base_url` per provider.
+      security:
+        - virtualKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PassthroughBody'
+      responses:
+        '200':
+          description: Provider response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PassthroughBody'
+        '403':
+          $ref: '#/components/responses/Blocked'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Admin session token issued by `/admin/v1/auth/login`.
+    virtualKeyAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+      description: Virtual key (`gw_live_...`) for the proxy surface.
+    anthropicKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Virtual key in Anthropic native style.
+    azureKeyAuth:
+      type: apiKey
+      in: header
+      name: api-key
+      description: Virtual key in Azure OpenAI native style.
+
+  parameters:
+    IdParam:
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PageParam:
+      in: query
+      name: page
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSizeParam:
+      in: query
+      name: page_size
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+    RangeFromParam:
+      in: query
+      name: from
+      required: true
+      schema:
+        type: string
+        format: date-time
+    RangeToParam:
+      in: query
+      name: to
+      required: true
+      schema:
+        type: string
+        format: date-time
+    GroupByParam:
+      in: query
+      name: group_by
+      schema:
+        type: string
+        enum: [hour, day, week, month]
+        default: day
+
+  responses:
+    Unauthorized:
+      description: Authentication required or invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Operation conflicts with current state.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    UnprocessableEntity:
+      description: Request body failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Blocked:
+      description: DLP blocked the request.
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/ErrorResponse'
+              - type: object
+                properties:
+                  blocked_categories:
+                    type: array
+                    items:
+                      type: string
+                  audit_id:
+                    type: string
+                    format: uuid
+
+  schemas:
+    # -----------------------------------------------------------------------
+    # Primitives / enums
+    # -----------------------------------------------------------------------
+    ProviderName:
+      type: string
+      enum: [openai, anthropic, google, azure]
+
+    Strategy:
+      type: string
+      enum: [mock, hybrid, specialized, judge, off]
+      description: DLP strategy. `mock` always allows; `off` skips inspection (dangerous).
+
+    Decision:
+      type: string
+      enum: [allowed, blocked, masked, error, partial_block]
+      description: Outcome of an inspection or the final disposition of a request.
+
+    FailMode:
+      type: string
+      enum: [closed, open, open_for_low_risk]
+      description: Behaviour when the inspector is unreachable.
+
+    Severity:
+      type: string
+      enum: [allow, mask, block]
+
+    # -----------------------------------------------------------------------
+    # Envelopes
+    # -----------------------------------------------------------------------
+    PageEnvelope:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+        page_size:
+          type: integer
+        total:
+          type: integer
+        has_more:
+          type: boolean
+      required: [page, page_size, total, has_more]
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable error code.
+              examples:
+                - dlp_blocked
+                - rate_limited
+                - invalid_provider
+                - unauthorized
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+        request_id:
+          type: string
+          format: uuid
+
+    PassthroughBody:
+      description: |
+        Provider-native request or response body, opaque to LeakShield except
+        for the message-content fields used for inspection. The schema is
+        intentionally loose so new provider features keep working.
+      type: object
+      additionalProperties: true
+
+    # -----------------------------------------------------------------------
+    # Setup / auth
+    # -----------------------------------------------------------------------
+    SetupStatus:
+      type: object
+      required: [completed]
+      properties:
+        completed:
+          type: boolean
+          description: Has bootstrap finished?
+        version:
+          type: string
+          examples: ['0.1.0']
+        kek_provider:
+          type: string
+        inspector_backend:
+          type: string
+
+    BootstrapRequest:
+      type: object
+      required: [company_name, admin_email, admin_password]
+      properties:
+        company_name:
+          type: string
+          minLength: 1
+        company_slug:
+          type: string
+          pattern: '^[a-z0-9-]+$'
+        admin_email:
+          type: string
+          format: email
+        admin_password:
+          type: string
+          format: password
+          minLength: 12
+        admin_name:
+          type: string
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+
+    LoginResponse:
+      type: object
+      required: [access_token, expires_at, admin]
+      properties:
+        access_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+        admin:
+          $ref: '#/components/schemas/MeResponse'
+
+    MeResponse:
+      type: object
+      required: [id, email, role]
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [super_admin, company_admin, operator, auditor]
+        company_id:
+          type: string
+          format: uuid
+        company_name:
+          type: string
+        last_login_at:
+          type: string
+          format: date-time
+
+    # -----------------------------------------------------------------------
+    # Providers
+    # -----------------------------------------------------------------------
+    Provider:
+      type: object
+      required: [id, provider, label, is_active, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        label:
+          type: string
+        last_test_status:
+          type: string
+        last_tested_at:
+          type: string
+          format: date-time
+        is_active:
+          type: boolean
+        config:
+          type: object
+          additionalProperties: true
+        rotated_from_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+
+    ProviderKey:
+      description: Plaintext API key (returned only on creation/rotation).
+      type: object
+      required: [api_key]
+      properties:
+        api_key:
+          type: string
+
+    ProviderCreate:
+      type: object
+      required: [provider, label, api_key]
+      properties:
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        label:
+          type: string
+        api_key:
+          type: string
+          description: Provider master key. Encrypted server-side immediately.
+        config:
+          type: object
+          additionalProperties: true
+
+    ProviderUpdate:
+      type: object
+      properties:
+        label:
+          type: string
+        api_key:
+          type: string
+          description: Provide to rotate; the previous key is preserved as `rotated_from_id`.
+        config:
+          type: object
+          additionalProperties: true
+        is_active:
+          type: boolean
+
+    ProviderTestRequest:
+      type: object
+      required: [provider, api_key]
+      properties:
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        api_key:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+
+    ProviderTestResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        latency_ms:
+          type: integer
+        sample_models:
+          type: array
+          items:
+            type: string
+        error:
+          type: string
+
+    # -----------------------------------------------------------------------
+    # Users
+    # -----------------------------------------------------------------------
+    User:
+      type: object
+      required: [id, email, name, is_active, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        surname:
+          type: string
+        phone:
+          type: string
+        department:
+          type: string
+        role:
+          type: string
+          default: member
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    UserCreate:
+      type: object
+      required: [email, name]
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        surname:
+          type: string
+        phone:
+          type: string
+        department:
+          type: string
+        role:
+          type: string
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        surname:
+          type: string
+        phone:
+          type: string
+        department:
+          type: string
+        role:
+          type: string
+        is_active:
+          type: boolean
+
+    UserImportResult:
+      type: object
+      required: [created, updated, skipped, errors]
+      properties:
+        created:
+          type: integer
+        updated:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              row:
+                type: integer
+              email:
+                type: string
+              reason:
+                type: string
+
+    # -----------------------------------------------------------------------
+    # Virtual keys
+    # -----------------------------------------------------------------------
+    VirtualKey:
+      type: object
+      required: [id, user_id, name, key_prefix, is_active, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        key_prefix:
+          type: string
+          description: First ~8 visible characters of the key for UI lookup.
+        allowed_providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderName'
+        allowed_models:
+          type: array
+          items:
+            type: string
+        rpm_limit:
+          type: integer
+          nullable: true
+        tpm_limit:
+          type: integer
+          nullable: true
+        monthly_token_limit:
+          type: integer
+          format: int64
+          nullable: true
+        monthly_usd_micro_limit:
+          type: integer
+          format: int64
+          nullable: true
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+        revoked_at:
+          type: string
+          format: date-time
+          nullable: true
+        last_used_at:
+          type: string
+          format: date-time
+          nullable: true
+        is_active:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    VirtualKeyCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        allowed_providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderName'
+        allowed_models:
+          type: array
+          items:
+            type: string
+        rpm_limit:
+          type: integer
+        tpm_limit:
+          type: integer
+        monthly_token_limit:
+          type: integer
+          format: int64
+        monthly_usd_micro_limit:
+          type: integer
+          format: int64
+        expires_at:
+          type: string
+          format: date-time
+
+    VirtualKeyMinted:
+      allOf:
+        - $ref: '#/components/schemas/VirtualKey'
+        - type: object
+          required: [api_key]
+          properties:
+            api_key:
+              type: string
+              description: |
+                Plaintext key. Shown ONCE — there is no way to retrieve it later.
+                Format: `gw_live_<8-char-prefix>_<32-char-secret>`.
+
+    # -----------------------------------------------------------------------
+    # DLP policies
+    # -----------------------------------------------------------------------
+    DLPPolicy:
+      type: object
+      required: [id, name, strategy, fail_mode, version, is_default]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        strategy:
+          $ref: '#/components/schemas/Strategy'
+        fail_mode:
+          $ref: '#/components/schemas/FailMode'
+        response_inspection:
+          type: boolean
+        audit_full_prompt:
+          type: boolean
+        is_default:
+          type: boolean
+        version:
+          type: integer
+        config:
+          $ref: '#/components/schemas/DLPPolicyConfig'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DLPPolicyConfig:
+      type: object
+      properties:
+        backend:
+          type: string
+          enum: [mock, ollama, vllm, llamacpp, openai_compat]
+        backend_url:
+          type: string
+        judge_model:
+          type: string
+        judge_prompt:
+          type: string
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/DLPCategory'
+        thresholds:
+          type: object
+          properties:
+            block:
+              type: number
+              format: float
+            mask:
+              type: number
+              format: float
+
+    DLPCategory:
+      type: object
+      required: [name, severity]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        keywords:
+          type: array
+          items:
+            type: string
+        regex_patterns:
+          type: array
+          items:
+            type: string
+        document_fingerprints:
+          type: array
+          items:
+            type: string
+        llm_only_description:
+          type: string
+        bloom_filter_id:
+          type: string
+        is_built_in:
+          type: boolean
+
+    DLPPolicyCreate:
+      type: object
+      required: [name, strategy]
+      properties:
+        name:
+          type: string
+        strategy:
+          $ref: '#/components/schemas/Strategy'
+        fail_mode:
+          $ref: '#/components/schemas/FailMode'
+        response_inspection:
+          type: boolean
+        audit_full_prompt:
+          type: boolean
+        is_default:
+          type: boolean
+        config:
+          $ref: '#/components/schemas/DLPPolicyConfig'
+
+    DLPPolicyUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        strategy:
+          $ref: '#/components/schemas/Strategy'
+        fail_mode:
+          $ref: '#/components/schemas/FailMode'
+        response_inspection:
+          type: boolean
+        audit_full_prompt:
+          type: boolean
+        is_default:
+          type: boolean
+        config:
+          $ref: '#/components/schemas/DLPPolicyConfig'
+        notes:
+          type: string
+
+    PolicyVersion:
+      type: object
+      required: [id, version, content, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        content:
+          $ref: '#/components/schemas/DLPPolicyConfig'
+        edited_by:
+          type: string
+          format: uuid
+        test_results:
+          $ref: '#/components/schemas/PolicyTestResult'
+        notes:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    PolicyTestRequest:
+      type: object
+      required: [content]
+      properties:
+        content:
+          type: string
+          description: Sample prompt or message text to inspect.
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        model:
+          type: string
+
+    PolicyTestResult:
+      type: object
+      required: [decision, latency_ms]
+      properties:
+        decision:
+          $ref: '#/components/schemas/Decision'
+        latency_ms:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: object
+            required: [name, severity]
+            properties:
+              name:
+                type: string
+              severity:
+                $ref: '#/components/schemas/Severity'
+              score:
+                type: number
+                format: float
+        reasoning:
+          type: string
+        adversarial:
+          type: object
+          description: Pass/fail summary for the adversarial test suite gating deploys.
+          properties:
+            passed:
+              type: integer
+            failed:
+              type: integer
+            failures:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  expected:
+                    $ref: '#/components/schemas/Decision'
+                  actual:
+                    $ref: '#/components/schemas/Decision'
+
+    # -----------------------------------------------------------------------
+    # Audit / analytics
+    # -----------------------------------------------------------------------
+    AuditLogEntry:
+      type: object
+      required: [id, request_id, provider, endpoint, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        request_id:
+          type: string
+          format: uuid
+        company_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        virtual_key_id:
+          type: string
+          format: uuid
+          nullable: true
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        model:
+          type: string
+        endpoint:
+          type: string
+        status:
+          $ref: '#/components/schemas/Decision'
+        blocked_categories:
+          type: array
+          items:
+            type: string
+        verdict_reason:
+          type: string
+        inspector_id:
+          type: string
+        inspector_latency_ms:
+          type: integer
+        prompt_preview:
+          type: string
+          description: Truncated, redacted preview. Full prompt is encrypted at rest.
+        prompt_tokens:
+          type: integer
+        completion_tokens:
+          type: integer
+        cost_usd_micro:
+          type: integer
+          format: int64
+        latency_ms:
+          type: integer
+        client_ip:
+          type: string
+        user_agent:
+          type: string
+        prev_hash:
+          type: string
+          format: byte
+        row_hash:
+          type: string
+          format: byte
+        created_at:
+          type: string
+          format: date-time
+
+    UsageBucket:
+      type: object
+      required: [bucket, requests, prompt_tokens, completion_tokens]
+      properties:
+        bucket:
+          type: string
+          format: date-time
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        model:
+          type: string
+        requests:
+          type: integer
+          format: int64
+        prompt_tokens:
+          type: integer
+          format: int64
+        completion_tokens:
+          type: integer
+          format: int64
+        blocked:
+          type: integer
+          format: int64
+        masked:
+          type: integer
+          format: int64
+        errored:
+          type: integer
+          format: int64
+
+    CostBucket:
+      type: object
+      required: [bucket, cost_usd_micro]
+      properties:
+        bucket:
+          type: string
+          format: date-time
+        provider:
+          $ref: '#/components/schemas/ProviderName'
+        model:
+          type: string
+        cost_usd_micro:
+          type: integer
+          format: int64
+        cost_usd:
+          type: number
+          format: double
+          description: Convenience — `cost_usd_micro / 1_000_000`.
+
+    BlockBucket:
+      type: object
+      required: [bucket, total]
+      properties:
+        bucket:
+          type: string
+          format: date-time
+        total:
+          type: integer
+          format: int64
+        by_category:
+          type: object
+          additionalProperties:
+            type: integer
+            format: int64

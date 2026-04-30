@@ -1,0 +1,119 @@
+name: Bug report
+description: Report something that does not work as expected.
+title: "bug: <short summary>"
+labels:
+  - bug
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug. The clearer the report, the faster we can fix it.
+        Security issues must NOT be filed here — see [SECURITY.md](../blob/main/SECURITY.md) for the
+        private disclosure process.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear, concise summary of what is wrong.
+      placeholder: When I send a streaming OpenAI request through the gateway, the SSE chunks stop after ~10 messages.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a minimal reproduction. Numbered steps with exact commands or curl invocations are best.
+      placeholder: |
+        1. `docker compose up -d`
+        2. Create a virtual key in the panel
+        3. `curl -N -X POST http://localhost:8080/openai/v1/chat/completions ...`
+        4. Observe truncated stream
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: What actually happened? Include any error messages.
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: LeakShield version / commit
+      description: Output of `docker image inspect` or the git SHA you built from.
+      placeholder: v0.1.0 or 0123abc
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - gateway
+        - inspector
+        - panel
+        - helm chart
+        - docker-compose
+        - docs
+        - other / unsure
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment shape
+      options:
+        - docker-compose (dev)
+        - docker-compose (prod variant)
+        - Kubernetes (Helm chart)
+        - Bare-metal binary
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS / kernel / Docker / Kubernetes / browser versions, inspector backend (mock/ollama/vllm/llamacpp/openai_compat), KEK provider, etc.
+      placeholder: |
+        OS: Ubuntu 24.04
+        Docker: 27.2.0
+        Inspector backend: ollama / qwen2.5:3b
+        KEK provider: vault
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs / stack trace
+      description: Paste log excerpts here. Please redact anything that looks like a secret (`gw_live_*`, `sk-*`, etc.).
+      render: shell
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I have read and agree to the [Contributor Covenant Code of Conduct](../blob/main/CODE_OF_CONDUCT.md).
+          required: true
+        - label: I have searched existing issues and this is not a duplicate.
+          required: true

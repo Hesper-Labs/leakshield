@@ -1,0 +1,29 @@
+{{- /*
+Inspector HPA. Scaling on CPU is a sane default for the `mock` and `hybrid`
+strategies; deployments running a `judge` strategy on a GPU should leave
+autoscaling off (set `inspector.autoscaling.enabled=false`) and scale up
+vertically (bigger GPU) or by replicating the GPU node pool manually.
+*/ -}}
+{{- if and .Values.inspector.autoscaling .Values.inspector.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "leakshield.componentName" (list . "inspector") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.componentLabels" (list . "inspector") | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "leakshield.componentName" (list . "inspector") }}
+  minReplicas: {{ .Values.inspector.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.inspector.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.inspector.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

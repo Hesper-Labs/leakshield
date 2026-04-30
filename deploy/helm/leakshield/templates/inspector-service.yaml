@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "leakshield.componentName" (list . "inspector") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.componentLabels" (list . "inspector") | nindent 4 }}
+spec:
+  type: {{ .Values.inspector.service.type }}
+  ports:
+    - name: grpc
+      port: {{ .Values.inspector.service.port }}
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    {{- include "leakshield.componentSelectorLabels" (list . "inspector") | nindent 4 }}

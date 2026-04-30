@@ -1,0 +1,105 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "leakshield.componentName" (list . "gateway") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.componentLabels" (list . "gateway") | nindent 4 }}
+spec:
+  {{- if not .Values.gateway.autoscaling.enabled }}
+  replicas: {{ .Values.gateway.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "leakshield.componentSelectorLabels" (list . "gateway") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "leakshield.componentSelectorLabels" (list . "gateway") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "leakshield.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: gateway
+          image: {{ include "leakshield.image" (dict "ctx" . "component" "gateway") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: ["serve"]
+          ports:
+            - name: http
+              containerPort: {{ .Values.gateway.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "leakshield.configMapName" . }}
+          env:
+            - name: LEAKSHIELD_DATABASE_URL
+              value: {{ include "leakshield.databaseUrl" . | quote }}
+            - name: LEAKSHIELD_REDIS_URL
+              value: {{ include "leakshield.redisUrl" . | quote }}
+            {{- if and .Values.postgres.enabled (not .Values.postgres.auth.existingSecret) }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "leakshield.secretName" . }}
+                  key: postgres-password
+            {{- else if .Values.postgres.auth.existingSecret }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.postgres.auth.existingSecret }}
+                  key: postgres-password
+            {{- end }}
+            - name: LEAKSHIELD_JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ default (include "leakshield.secretName" .) .Values.auth.existingSecret }}
+                  key: jwt-secret
+            {{- if eq .Values.kek.provider "local" }}
+            - name: LEAKSHIELD_KEK
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "leakshield.secretName" . }}
+                  key: kek
+            {{- end }}
+            {{- range $k, $v := .Values.gateway.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.gateway.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.gateway.readinessProbe | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

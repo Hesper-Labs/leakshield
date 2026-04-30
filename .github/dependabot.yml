@@ -1,0 +1,150 @@
+version: 2
+updates:
+  # Go modules — gateway service
+  - package-ecosystem: gomod
+    directory: /gateway
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - go
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    groups:
+      gateway-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Python — inspector service
+  - package-ecosystem: pip
+    directory: /inspector
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - python
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    groups:
+      inspector-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Node — admin panel
+  - package-ecosystem: npm
+    directory: /panel
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - javascript
+    commit-message:
+      prefix: chore(deps)
+      include: scope
+    groups:
+      panel-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    commit-message:
+      prefix: chore(ci)
+      include: scope
+    groups:
+      actions-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  # Docker base images
+  - package-ecosystem: docker
+    directory: /gateway
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: chore(docker)
+      include: scope
+    groups:
+      docker-gateway:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /inspector
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: chore(docker)
+      include: scope
+    groups:
+      docker-inspector:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: docker
+    directory: /panel
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: 'Etc/UTC'
+    labels:
+      - dependencies
+      - docker
+    commit-message:
+      prefix: chore(docker)
+      include: scope
+    groups:
+      docker-panel:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch

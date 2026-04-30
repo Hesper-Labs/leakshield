@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions and discussion
+    url: https://github.com/Hesper-Labs/leakshield/discussions
+    about: Ask a question, request guidance, or share an idea before opening an issue.
+  - name: Security disclosures
+    url: https://github.com/Hesper-Labs/leakshield/security/advisories/new
+    about: Report a vulnerability privately. Do NOT open a public issue for security problems.
+  - name: Documentation
+    url: https://github.com/Hesper-Labs/leakshield/tree/main/docs
+    about: Read the architecture, DLP, and deployment docs before filing.

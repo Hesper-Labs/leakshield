@@ -1,0 +1,19 @@
+{{- if .Values.redis.enabled }}
+{{- $name := printf "%s-redis" (include "leakshield.fullname" .) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.componentLabels" (list . "redis") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    {{- include "leakshield.componentSelectorLabels" (list . "redis") | nindent 4 }}
+{{- end }}

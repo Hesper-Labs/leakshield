@@ -1,0 +1,3 @@
+# LeakShield panel public assets.
+# Drop logo.png, favicon.ico, etc. here. The Logo component falls back
+# to an inline SVG when /logo.png is missing.

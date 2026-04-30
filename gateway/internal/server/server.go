@@ -15,6 +15,13 @@ import (
 
 	"github.com/Hesper-Labs/leakshield/gateway/internal/config"
 	"github.com/Hesper-Labs/leakshield/gateway/internal/handlers"
+
+	// Side-effect imports register the provider adapters with the
+	// global registry. Any new adapter must be added here.
+	_ "github.com/Hesper-Labs/leakshield/gateway/internal/provider/anthropic"
+	_ "github.com/Hesper-Labs/leakshield/gateway/internal/provider/azure"
+	_ "github.com/Hesper-Labs/leakshield/gateway/internal/provider/google"
+	_ "github.com/Hesper-Labs/leakshield/gateway/internal/provider/openai"
 )
 
 // Server is the public-facing gateway: proxy endpoints + health checks.
@@ -47,23 +54,37 @@ func New(ctx context.Context, cfg *config.Config, logger *slog.Logger) (*Server,
 	r.Get("/healthz", handlers.Healthz(pool))
 	r.Get("/readyz", handlers.Readyz(pool))
 
-	// Provider native endpoints (filled in by phases 2-4).
+	// Provider native endpoints. Each prefix dispatches to the
+	// matching adapter via internal/provider's registry.
+	openaiHandler := handlers.ChatHandler(logger, "openai")
 	r.Route("/openai/v1", func(r chi.Router) {
-		r.Post("/chat/completions", handlers.NotImplemented("openai chat completions"))
-		r.Post("/embeddings", handlers.NotImplemented("openai embeddings"))
-		r.Get("/models", handlers.NotImplemented("openai models"))
+		r.Post("/chat/completions", openaiHandler)
+		r.Post("/embeddings", openaiHandler)
+		r.Post("/responses", openaiHandler)
+		r.Get("/models", openaiHandler)
 	})
+
+	anthropicHandler := handlers.ChatHandler(logger, "anthropic")
 	r.Route("/anthropic/v1", func(r chi.Router) {
-		r.Post("/messages", handlers.NotImplemented("anthropic messages"))
+		r.Post("/messages", anthropicHandler)
+		r.Post("/messages/count_tokens", anthropicHandler)
 	})
+
+	googleHandler := handlers.ChatHandler(logger, "google")
 	r.Route("/google/v1beta", func(r chi.Router) {
-		r.Post("/models/*", handlers.NotImplemented("google generateContent"))
+		r.Post("/models/*", googleHandler)
 	})
+
+	azureHandler := handlers.ChatHandler(logger, "azure")
 	r.Route("/azure/openai", func(r chi.Router) {
-		r.Post("/deployments/*", handlers.NotImplemented("azure deployments"))
+		r.Post("/deployments/*", azureHandler)
 	})
 
 	// Universal OpenAI-compatible router (LiteLLM-style, optional).
+	// TODO(phase-router): route by virtual key policy or `model`
+	// heuristic to the appropriate adapter, translating only what is
+	// strictly necessary. Until that lands, return NotImplemented so
+	// callers don't silently misbehave.
 	r.Route("/v1", func(r chi.Router) {
 		r.Post("/chat/completions", handlers.NotImplemented("universal router chat"))
 	})

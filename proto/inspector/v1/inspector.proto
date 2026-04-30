@@ -1,0 +1,128 @@
+syntax = "proto3";
+
+package leakshield.inspector.v1;
+
+option go_package = "github.com/Hesper-Labs/leakshield/gateway/internal/inspector/proto;inspectorpb";
+
+// Inspector is the gRPC service that decides DLP outcomes for prompts.
+// The gateway calls Inspector for every request before forwarding to a
+// provider.
+service Inspector {
+  // InspectPrompt makes a pre-flight DLP decision for a single prompt.
+  // It is invoked BEFORE the gateway opens an upstream provider connection;
+  // call it as a low-latency blocking RPC.
+  rpc InspectPrompt(InspectRequest) returns (InspectResponse);
+
+  // InspectStreamWindow continuously inspects chunks of a streamed
+  // response. Used when output filtering is enabled for a tenant.
+  rpc InspectStreamWindow(stream WindowChunk) returns (stream WindowDecision);
+
+  // Health reports whether the inspector backend (Ollama, vLLM, etc.) is
+  // reachable and warm.
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+// ----------------- InspectPrompt -----------------
+
+message InspectRequest {
+  string company_id = 1;
+  string policy_id = 2;
+  int32  policy_version = 3;
+
+  // Normalized prompt messages (role: system|user|assistant|tool).
+  repeated Message messages = 4;
+
+  // Which DLP strategy to apply for this request.
+  Strategy strategy = 5;
+
+  // Strategy-specific configuration (the JSON blob from policy.config).
+  bytes config_blob = 6;
+
+  // Trace context propagation (W3C traceparent / tracestate).
+  map<string, string> trace_metadata = 7;
+}
+
+message InspectResponse {
+  Decision decision = 1;
+  repeated Category categories = 2;
+  string reason = 3;
+  float  confidence = 4;
+
+  // For MASK: messages with PII spans replaced by [REDACTED:CATEGORY].
+  // The gateway forwards these to the provider when decision == MASK.
+  repeated Message redacted_messages = 5;
+
+  int32  latency_ms = 6;
+  string inspector_id = 7;     // backend instance, useful for debugging
+}
+
+enum Decision {
+  DECISION_UNSPECIFIED = 0;
+  DECISION_ALLOW       = 1;
+  DECISION_BLOCK       = 2;
+  DECISION_MASK        = 3;
+  DECISION_ESCALATE    = 4;    // hybrid: presidio → LLM fallthrough
+}
+
+enum Strategy {
+  STRATEGY_UNSPECIFIED = 0;
+  STRATEGY_MOCK        = 1;    // always ALLOW (dev / smoke test)
+  STRATEGY_HYBRID      = 2;    // Presidio + LLM escalation
+  STRATEGY_SPECIALIZED = 3;    // Llama Guard, ShieldGemma, etc.
+  STRATEGY_JUDGE       = 4;    // any general LLM + admin-editable prompt
+}
+
+message Category {
+  string name = 1;              // e.g. "PII.TC_KIMLIK", "FINANCIAL.IBAN"
+  float  confidence = 2;
+  repeated Span spans = 3;      // character ranges that matched
+}
+
+message Span {
+  int32 message_index = 1;      // index into InspectRequest.messages
+  int32 start = 2;              // character offset
+  int32 end = 3;
+}
+
+message Message {
+  string role = 1;              // system | user | assistant | tool
+  string content = 2;
+  // Multimodal / tool-use extension (later):
+  //   repeated ContentBlock blocks = 3;
+}
+
+// ----------------- InspectStreamWindow (output filtering) -----------------
+
+message WindowChunk {
+  string request_id = 1;
+  string company_id = 2;
+  string policy_id = 3;
+  int32  sequence = 4;
+  string text = 5;              // rolling tail of the response so far
+  bool   is_final = 6;
+}
+
+message WindowDecision {
+  string request_id = 1;
+  int32  sequence = 2;
+  Decision decision = 3;
+  repeated Category categories = 4;
+  string redacted_text = 5;     // populated when decision == MASK
+}
+
+// ----------------- Health -----------------
+
+message HealthRequest {}
+
+message HealthResponse {
+  enum Status {
+    STATUS_UNSPECIFIED = 0;
+    STATUS_SERVING     = 1;
+    STATUS_DEGRADED    = 2;     // backend slow but still responding
+    STATUS_DOWN        = 3;
+  }
+  Status status = 1;
+  string backend = 2;            // "ollama" | "vllm" | "llamacpp" | "mock"
+  string model = 3;              // currently loaded model identifier
+  int64  uptime_seconds = 4;
+}

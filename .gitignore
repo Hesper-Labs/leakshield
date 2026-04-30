@@ -1,0 +1,66 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*~
+
+# Go
+gateway/bin/
+gateway/leakshield
+*.test
+*.out
+coverage.html
+
+# Python
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.env
+.python-version
+dist/
+build/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+.turbo/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Local secrets
+.leakshield/
+*.pem
+*.key
+!gateway/internal/crypto/testdata/*.key
+.env.local
+.env.development.local
+.env.production.local
+
+# Docker
+docker-compose.override.yml
+
+# Generated
+gateway/internal/store/postgres/*.gen.go
+panel/lib/api/types.ts
+proto/inspector/v1/*.pb.go
+inspector/src/leakshield_inspector/proto/
+
+# Local data
+postgres-data/
+redis-data/
+ollama-data/
+minio-data/

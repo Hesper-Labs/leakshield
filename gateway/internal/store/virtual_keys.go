@@ -26,8 +26,18 @@ type VirtualKey struct {
 	ExpiresAt            *time.Time
 	RevokedAt            *time.Time
 	LastUsedAt           *time.Time
-	IsActive             bool
 	CreatedAt            time.Time
+}
+
+// IsActive reports whether the key is usable right now.
+func (vk *VirtualKey) IsActive() bool {
+	if vk.RevokedAt != nil {
+		return false
+	}
+	if vk.ExpiresAt != nil && time.Now().After(*vk.ExpiresAt) {
+		return false
+	}
+	return true
 }
 
 // CreateVirtualKeyParams holds the inputs for issuing a key.
@@ -70,7 +80,7 @@ func (d *DB) CreateVirtualKey(ctx context.Context, tenantID uuid.UUID, p CreateV
 			&vk.ID, &vk.CompanyID, &vk.UserID, &vk.Name, &vk.KeyPrefix, &vk.KeyHash,
 			&vk.AllowedProviders, &vk.AllowedModels, &vk.RPMLimit, &vk.TPMLimit,
 			&vk.MonthlyTokenLimit, &vk.MonthlyUSDMicroLimit,
-			&vk.ExpiresAt, &vk.RevokedAt, &vk.LastUsedAt, &vk.IsActive, &vk.CreatedAt,
+			&vk.ExpiresAt, &vk.RevokedAt, &vk.LastUsedAt, &vk.CreatedAt,
 		)
 	})
 	if err != nil {
@@ -89,14 +99,14 @@ func (d *DB) FindVirtualKeyByPrefix(ctx context.Context, prefix string) (*Virtua
 		SELECT id, company_id, user_id, name, key_prefix, key_hash,
 		       allowed_providers, allowed_models, rpm_limit, tpm_limit,
 		       monthly_token_limit, monthly_usd_micro_limit,
-		       expires_at, revoked_at, last_used_at, is_active, created_at
+		       expires_at, revoked_at, last_used_at, created_at
 		FROM virtual_keys
 		WHERE key_prefix = $1 AND revoked_at IS NULL
 	`, prefix).Scan(
 		&vk.ID, &vk.CompanyID, &vk.UserID, &vk.Name, &vk.KeyPrefix, &vk.KeyHash,
 		&vk.AllowedProviders, &vk.AllowedModels, &vk.RPMLimit, &vk.TPMLimit,
 		&vk.MonthlyTokenLimit, &vk.MonthlyUSDMicroLimit,
-		&vk.ExpiresAt, &vk.RevokedAt, &vk.LastUsedAt, &vk.IsActive, &vk.CreatedAt,
+		&vk.ExpiresAt, &vk.RevokedAt, &vk.LastUsedAt, &vk.CreatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound
@@ -122,7 +132,7 @@ func (d *DB) ListVirtualKeysByUser(ctx context.Context, tenantID, userID uuid.UU
 			SELECT id, company_id, user_id, name, key_prefix, key_hash,
 			       allowed_providers, allowed_models, rpm_limit, tpm_limit,
 			       monthly_token_limit, monthly_usd_micro_limit,
-			       expires_at, revoked_at, last_used_at, is_active, created_at
+			       expires_at, revoked_at, last_used_at, created_at
 			FROM virtual_keys
 			WHERE user_id = $1
 			ORDER BY created_at DESC
@@ -137,7 +147,7 @@ func (d *DB) ListVirtualKeysByUser(ctx context.Context, tenantID, userID uuid.UU
 				&vk.ID, &vk.CompanyID, &vk.UserID, &vk.Name, &vk.KeyPrefix, &vk.KeyHash,
 				&vk.AllowedProviders, &vk.AllowedModels, &vk.RPMLimit, &vk.TPMLimit,
 				&vk.MonthlyTokenLimit, &vk.MonthlyUSDMicroLimit,
-				&vk.ExpiresAt, &vk.RevokedAt, &vk.LastUsedAt, &vk.IsActive, &vk.CreatedAt,
+				&vk.ExpiresAt, &vk.RevokedAt, &vk.LastUsedAt, &vk.CreatedAt,
 			); err != nil {
 				return err
 			}

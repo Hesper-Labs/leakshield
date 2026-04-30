@@ -1,0 +1,110 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $gatewaySel := include "leakshield.componentSelectorLabels" (list . "gateway") -}}
+{{- $inspectorSel := include "leakshield.componentSelectorLabels" (list . "inspector") -}}
+{{- $panelSel := include "leakshield.componentSelectorLabels" (list . "panel") -}}
+{{- $postgresSel := include "leakshield.componentSelectorLabels" (list . "postgres") -}}
+{{- $redisSel := include "leakshield.componentSelectorLabels" (list . "redis") -}}
+---
+# Inspector accepts traffic from the gateway only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "leakshield.componentName" (list . "inspector") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "leakshield.componentSelectorLabels" (list . "inspector") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "leakshield.componentSelectorLabels" (list . "gateway") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.inspector.service.port }}
+{{- if .Values.postgres.enabled }}
+---
+# Postgres accepts traffic from gateway and inspector only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-postgres" (include "leakshield.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "leakshield.componentSelectorLabels" (list . "postgres") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "leakshield.componentSelectorLabels" (list . "gateway") | nindent 14 }}
+        - podSelector:
+            matchLabels:
+              {{- include "leakshield.componentSelectorLabels" (list . "inspector") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 5432
+{{- end }}
+{{- if .Values.redis.enabled }}
+---
+# Redis accepts traffic from the gateway only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ printf "%s-redis" (include "leakshield.fullname" .) }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "leakshield.componentSelectorLabels" (list . "redis") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "leakshield.componentSelectorLabels" (list . "gateway") | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6379
+{{- end }}
+---
+# Gateway ingress: panel pods + (optionally) explicit CIDRs from values.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "leakshield.componentName" (list . "gateway") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "leakshield.componentSelectorLabels" (list . "gateway") | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "leakshield.componentSelectorLabels" (list . "panel") | nindent 14 }}
+        {{- range .Values.networkPolicy.allowedClientCidrs }}
+        - ipBlock:
+            cidr: {{ . | quote }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ .Values.gateway.service.port }}
+{{- end }}

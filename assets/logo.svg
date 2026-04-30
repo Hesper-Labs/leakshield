@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="LeakShield logo">
+  <title>LeakShield</title>
+  <defs>
+    <linearGradient id="shield-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+    <linearGradient id="flow-stroke" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b82f6" stop-opacity="0.0"/>
+      <stop offset="0.2" stop-color="#3b82f6" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#3b82f6" stop-opacity="1"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Three flow lines entering the shield from the left -->
+  <g stroke="url(#flow-stroke)" stroke-width="6" stroke-linecap="round" fill="none">
+    <path d="M16 92 H88"/>
+    <path d="M16 128 H88"/>
+    <path d="M16 164 H88"/>
+  </g>
+
+  <!-- Shield body -->
+  <path d="M128 24
+           L208 56
+           V128
+           C208 178 168 216 128 232
+           C88 216 48 178 48 128
+           V56
+           Z"
+        fill="url(#shield-fill)"
+        stroke="#0f172a"
+        stroke-width="10"
+        stroke-linejoin="round"/>
+
+  <!-- Inner shield border for visual depth -->
+  <path d="M128 44
+           L188 68
+           V128
+           C188 168 158 200 128 212
+           C98 200 68 168 68 128
+           V68
+           Z"
+        fill="none"
+        stroke="#0f172a"
+        stroke-width="2"
+        stroke-opacity="0.18"
+        stroke-linejoin="round"/>
+
+  <!-- Keyhole: circle + tapered slot, blue accent -->
+  <g fill="#3b82f6">
+    <circle cx="128" cy="118" r="20"/>
+    <path d="M120 130 L136 130 L142 178 L114 178 Z"/>
+  </g>
+
+  <!-- Subtle keyhole rim for crispness -->
+  <g fill="none" stroke="#0f172a" stroke-opacity="0.25" stroke-width="2">
+    <circle cx="128" cy="118" r="20"/>
+    <path d="M120 130 L136 130 L142 178 L114 178 Z"/>
+  </g>
+</svg>

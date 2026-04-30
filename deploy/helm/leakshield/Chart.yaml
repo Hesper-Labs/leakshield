@@ -1,0 +1,32 @@
+apiVersion: v2
+name: leakshield
+description: |
+  LeakShield — open-source AI gateway and DLP product. Bundles the Go gateway,
+  Python inspector, and Next.js admin panel, plus optional in-cluster Postgres
+  and Redis.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+kubeVersion: ">= 1.27.0-0"
+icon: https://raw.githubusercontent.com/Hesper-Labs/leakshield/main/assets/logo.png
+home: https://github.com/Hesper-Labs/leakshield
+sources:
+  - https://github.com/Hesper-Labs/leakshield
+keywords:
+  - ai
+  - llm
+  - gateway
+  - dlp
+  - security
+  - openai
+  - anthropic
+  - gemini
+  - azure-openai
+maintainers:
+  - name: Hesper-Labs maintainers
+    url: https://github.com/orgs/Hesper-Labs/teams/maintainers
+annotations:
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/category: security
+  artifacthub.io/changes: |
+    - Initial chart for LeakShield 0.1.0.

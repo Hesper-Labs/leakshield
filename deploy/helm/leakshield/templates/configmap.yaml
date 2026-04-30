@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "leakshield.configMapName" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.labels" . | nindent 4 }}
+data:
+  LEAKSHIELD_LOG_LEVEL: "info"
+  LEAKSHIELD_HTTP_ADDR: "0.0.0.0:{{ .Values.gateway.service.port }}"
+  LEAKSHIELD_INSPECTOR_ADDR: {{ include "leakshield.inspectorAddr" . | quote }}
+  LEAKSHIELD_INSPECTOR_BACKEND: {{ .Values.inspector.backend | quote }}
+  LEAKSHIELD_INSPECTOR_BACKEND_URL: {{ .Values.inspector.backendUrl | quote }}
+  LEAKSHIELD_INSPECTOR_JUDGE_MODEL: {{ .Values.inspector.judgeModel | quote }}
+  LEAKSHIELD_KEK_PROVIDER: {{ .Values.kek.provider | quote }}
+  {{- if eq .Values.kek.provider "vault" }}
+  LEAKSHIELD_KEK_VAULT_ADDR: {{ .Values.kek.vault.address | quote }}
+  LEAKSHIELD_KEK_VAULT_TRANSIT_PATH: {{ .Values.kek.vault.transitPath | quote }}
+  LEAKSHIELD_KEK_VAULT_ROLE: {{ .Values.kek.vault.role | quote }}
+  LEAKSHIELD_KEK_VAULT_AUTH_PATH: {{ .Values.kek.vault.authPath | quote }}
+  {{- else if eq .Values.kek.provider "aws" }}
+  LEAKSHIELD_KEK_AWS_REGION: {{ .Values.kek.aws.region | quote }}
+  LEAKSHIELD_KEK_AWS_KEY_ID: {{ .Values.kek.aws.keyId | quote }}
+  {{- else if eq .Values.kek.provider "gcp" }}
+  LEAKSHIELD_KEK_GCP_PROJECT: {{ .Values.kek.gcp.project | quote }}
+  LEAKSHIELD_KEK_GCP_LOCATION: {{ .Values.kek.gcp.location | quote }}
+  LEAKSHIELD_KEK_GCP_KEY_RING: {{ .Values.kek.gcp.keyRing | quote }}
+  LEAKSHIELD_KEK_GCP_KEY_NAME: {{ .Values.kek.gcp.keyName | quote }}
+  {{- else if eq .Values.kek.provider "azure" }}
+  LEAKSHIELD_KEK_AZURE_VAULT_URL: {{ .Values.kek.azure.vaultUrl | quote }}
+  LEAKSHIELD_KEK_AZURE_KEY_NAME: {{ .Values.kek.azure.keyName | quote }}
+  {{- end }}
+  {{- with .Values.observability.otlp.endpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ . | quote }}
+  {{- end }}
+  {{- if .Values.observability.otlp.insecure }}
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+  {{- end }}

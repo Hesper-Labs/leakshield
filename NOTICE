@@ -1,0 +1,79 @@
+LeakShield
+Copyright 2025 LeakShield contributors
+
+This product includes software developed by the LeakShield project authors and
+contributors. It is licensed under the Apache License, Version 2.0 (the
+"License"); you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations under
+the License.
+
+------------------------------------------------------------------------------
+Third-party components
+------------------------------------------------------------------------------
+
+This product bundles, depends on, or interoperates with the following
+third-party software. The corresponding upstream licenses apply to those
+components and are reproduced in their respective source repositories.
+
+Inspector (Python)
+  - Microsoft Presidio (Analyzer + Anonymizer) — MIT License
+      https://github.com/microsoft/presidio
+  - grpcio, grpcio-tools, protobuf — Apache License 2.0 / BSD
+      https://github.com/grpc/grpc
+  - FastAPI — MIT License — https://github.com/tiangolo/fastapi
+  - Uvicorn — BSD 3-Clause — https://github.com/encode/uvicorn
+  - HTTPX — BSD 3-Clause — https://github.com/encode/httpx
+  - Pydantic, pydantic-settings — MIT License — https://github.com/pydantic
+  - structlog — Apache License 2.0 / MIT — https://www.structlog.org/
+  - OpenTelemetry Python — Apache License 2.0 — https://github.com/open-telemetry
+  - regex — Apache License 2.0 — https://github.com/mrabarnett/mrab-regex
+  - vLLM (optional extra) — Apache License 2.0 — https://github.com/vllm-project/vllm
+  - llama-cpp-python (optional extra) — MIT License — https://github.com/abetlen/llama-cpp-python
+
+Gateway (Go)
+  - github.com/go-chi/chi/v5 — MIT License
+  - github.com/jackc/pgx/v5 — MIT License
+  - github.com/pressly/goose/v3 — MIT License
+  - github.com/spf13/cobra, github.com/spf13/pflag — Apache License 2.0
+  - github.com/sethvargo/go-retry — Apache License 2.0
+  - golang.org/x/crypto, golang.org/x/sync, golang.org/x/sys, golang.org/x/text — BSD 3-Clause
+  - go.uber.org/multierr — MIT License
+
+Admin panel (Next.js / React)
+  - Next.js — MIT License — https://nextjs.org/
+  - React, ReactDOM — MIT License — https://react.dev/
+  - shadcn/ui (component patterns) — MIT License — https://ui.shadcn.com/
+  - Radix UI primitives — MIT License — https://www.radix-ui.com/
+  - Tailwind CSS — MIT License — https://tailwindcss.com/
+  - Recharts — MIT License — https://recharts.org/
+  - lucide-react — ISC License — https://lucide.dev/
+  - TanStack Query — MIT License — https://tanstack.com/query
+  - Auth.js (next-auth) — ISC License — https://authjs.dev/
+  - Monaco Editor (@monaco-editor/react) — MIT License — https://github.com/suren-atoyan/monaco-react
+  - next-intl — MIT License — https://next-intl-docs.vercel.app/
+  - openapi-typescript / openapi-fetch — MIT License — https://openapi-ts.dev/
+  - Zustand — MIT License — https://zustand-demo.pmnd.rs/
+  - cmdk — MIT License — https://cmdk.paco.me/
+  - sonner — MIT License — https://sonner.emilkowal.ski/
+
+Reference / interoperability
+  - Llama Guard family of safety classifiers (Meta) — referenced for the
+    optional `specialized` DLP strategy. Subject to Meta's Llama license terms;
+    no Llama Guard weights are bundled or downloaded by LeakShield.
+  - Ollama, vLLM, llama.cpp, OpenAI-compatible servers — supported as inspector
+    backends. LeakShield does not download, distribute, or ship model weights.
+
+Brand assets
+  - Logo and banner under assets/ are original work, contributed under the
+    project license (Apache 2.0).
+
+This NOTICE file is informational. The above list is not necessarily
+exhaustive — see the lockfiles (gateway/go.sum, inspector/pyproject.toml,
+panel/package-lock.json) for the canonical, up-to-date dependency tree.

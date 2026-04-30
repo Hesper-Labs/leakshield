@@ -1,0 +1,69 @@
+name: Feature request
+description: Suggest a new capability or improvement.
+title: "feat: <short summary>"
+labels:
+  - enhancement
+  - triage
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for proposing a feature. Please describe the problem first — the more concrete the
+        user pain, the easier it is to evaluate the trade-off.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What user problem does this solve? Who is affected?
+      placeholder: |
+        As an admin operating LeakShield in a regulated environment, I cannot prove which DLP
+        policy version was active at a given audit-log timestamp.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: Proposed solution
+      description: What do you want to happen? Sketch the API / UX if you have one in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you weigh, and why did you reject them?
+
+  - type: textarea
+    id: value
+    attributes:
+      label: Value / impact
+      description: Who benefits, how often, and how much? Quantify if you can.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      multiple: true
+      options:
+        - gateway
+        - inspector
+        - panel
+        - helm chart
+        - docker-compose
+        - docs
+        - other / cross-cutting
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Code of Conduct
+      options:
+        - label: I have read and agree to the [Contributor Covenant Code of Conduct](../blob/main/CODE_OF_CONDUCT.md).
+          required: true
+        - label: I have searched existing issues and this proposal is not already tracked.
+          required: true

@@ -3,15 +3,20 @@
 This directory holds the project's logo, banner, and other marketing-grade artwork referenced
 from the README and the admin panel.
 
+The repo ships with vector fallbacks (`logo.svg`, `banner.svg`) so GitHub renders something
+useful out of the box. If `logo.png` and `banner.png` are present they take precedence on
+viewers that need raster art (older email clients, some social previews) — the README uses
+`<picture>` tags so PNGs override the SVGs automatically.
+
 ## Expected files
 
 | File | Purpose | Notes |
 |---|---|---|
-| `logo.png` | Square logo (used in README header, panel sidebar, favicon source) | ~1200 × 1200 ideal |
-| `logo.svg` | Vector logo for crisp rendering at any size | preferred when available |
-| `banner.png` | Wide hero/banner used in README | ~1800 × 800 |
-| `banner.svg` | Vector banner | optional |
-| `favicon.ico` | 32×32 favicon | generated from `logo.png` |
+| `logo.svg` | Vector logo, ships in the repo | 256×256 viewBox, navy + blue palette |
+| `banner.svg` | Vector hero banner, ships in the repo | 1600×600 viewBox |
+| `logo.png` | Optional raster logo (used in README header, panel sidebar, favicon source) | ~1200 × 1200 ideal; takes precedence over `logo.svg` |
+| `banner.png` | Optional raster banner | ~1800 × 800; takes precedence over `banner.svg` |
+| `favicon.ico` | 32×32 favicon | generated from `logo.png` or `logo.svg` |
 
 ## Visual identity
 
@@ -21,14 +26,13 @@ from the README and the admin panel.
 - The logo is a stylized shield with a keyhole and three flowing lines on the left, evoking a
   filtered traffic flow through a secure barrier.
 
-## Adding the official assets
+## Adding higher-fidelity raster assets
 
-The current copy of the official logo and banner lives outside the repo (sent through the
-project's design channel). To install:
+The vector fallbacks are deliberately simple. To install higher-fidelity art:
 
-1. Drop `logo.png` (or `.svg`) and `banner.png` (or `.svg`) into this directory.
+1. Drop `logo.png` and / or `banner.png` into this directory.
 2. Optionally generate `favicon.ico` from the logo.
 3. Verify the README header renders correctly: `open ../README.md` in a Markdown previewer.
 
-The README references these files via relative paths (`assets/logo.png`, `assets/banner.png`),
-so no other change is needed once the files are in place.
+The root README uses `<picture>` elements with the SVG as the fallback, so simply adding
+`logo.png` / `banner.png` next to the existing SVGs is enough — no other change required.

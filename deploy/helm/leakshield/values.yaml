@@ -1,0 +1,320 @@
+# Default values for the LeakShield chart.
+# Each section is documented inline. Anything left unset uses these defaults.
+
+# -----------------------------------------------------------------------------
+# Global image configuration
+# -----------------------------------------------------------------------------
+# Component images live at ghcr.io/hesper-labs/leakshield-{gateway,inspector,panel}.
+# Override `image.tag` to pin a specific release; otherwise the chart's
+# `appVersion` is used.
+image:
+  repository: ghcr.io/hesper-labs
+  # If empty, chart's appVersion is used (recommended).
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Pull secrets used to fetch the images from a private registry.
+# Example: `[{name: ghcr-pull-secret}]`.
+imagePullSecrets: []
+
+# Friendly override for the in-chart name and the resource prefix.
+nameOverride: ""
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Gateway (Go) — proxy + admin REST API + worker
+# -----------------------------------------------------------------------------
+gateway:
+  replicaCount: 2
+  # Image override (falls back to global `image.repository`/`image.tag`).
+  image:
+    repository: ""
+    tag: ""
+  # Container resources. Tune for your traffic; gateway is mostly I/O.
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+  # Horizontal Pod Autoscaler.
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+  # Container service port.
+  service:
+    type: ClusterIP
+    port: 8080
+  # Extra env vars (LEAKSHIELD_*). Refer to docs/setup-wizard.md for the full list.
+  env: {}
+  # Probe overrides (optional).
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 10
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+
+# -----------------------------------------------------------------------------
+# Inspector (Python) — DLP service
+# -----------------------------------------------------------------------------
+inspector:
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: ""
+  # Inspector is CPU-heavy when using `judge` strategy without a GPU. If you
+  # run a local GPU model, uncomment the GPU example below and set the
+  # appropriate `runtimeClassName` and node selector.
+  resources:
+    requests:
+      cpu: "1"
+      memory: 1Gi
+    limits:
+      cpu: "4"
+      memory: 4Gi
+      # nvidia.com/gpu: 1
+  # Backend selection: mock | ollama | vllm | llamacpp | openai_compat.
+  # `mock` always allows — useful to wire up the gateway end-to-end without a
+  # local LLM. The setup wizard will nudge you to switch.
+  backend: mock
+  # URL of the model server when `backend != mock`. For Ollama in-cluster:
+  # `http://ollama.ollama.svc.cluster.local:11434`.
+  backendUrl: ""
+  # Judge model name (used for `judge` and `hybrid` strategies). LeakShield
+  # never downloads models — pull or run the model yourself.
+  judgeModel: "qwen2.5:3b-instruct"
+  service:
+    type: ClusterIP
+    port: 50051
+  env: {}
+  # Optional: pin to GPU nodes. Combine with `resources.limits.nvidia.com/gpu`.
+  nodeSelector: {}
+  tolerations: []
+  # runtimeClassName: nvidia
+  livenessProbe:
+    exec:
+      command:
+        - python
+        - -m
+        - leakshield_inspector.healthcheck
+    initialDelaySeconds: 20
+    periodSeconds: 15
+  readinessProbe:
+    exec:
+      command:
+        - python
+        - -m
+        - leakshield_inspector.healthcheck
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+# -----------------------------------------------------------------------------
+# Panel (Next.js) — admin web app
+# -----------------------------------------------------------------------------
+panel:
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  service:
+    type: ClusterIP
+    port: 3000
+  # Public URL the panel uses to reach the gateway. Leave empty to use the
+  # in-cluster service name set by the chart.
+  publicGatewayUrl: ""
+  env: {}
+
+# -----------------------------------------------------------------------------
+# PostgreSQL
+# -----------------------------------------------------------------------------
+# In production you almost always want an external managed Postgres. Set
+# `postgres.enabled=false` and `postgres.externalDatabaseUrl` instead.
+postgres:
+  enabled: true
+  image:
+    repository: postgres
+    tag: "16-alpine"
+    pullPolicy: IfNotPresent
+  # Persistent volume size for the bundled StatefulSet.
+  size: 20Gi
+  storageClassName: ""
+  # If set, the chart skips the bundled StatefulSet and the Secret pulls this
+  # URL into LEAKSHIELD_DATABASE_URL. Format:
+  #   postgres://user:password@host:5432/leakshield?sslmode=require
+  externalDatabaseUrl: ""
+  auth:
+    username: leakshield
+    database: leakshield
+    # Strongly recommended: use a Kubernetes Secret instead of an inline value.
+    # Set `existingSecret` to the name of a Secret containing key
+    # `postgres-password`.
+    password: ""
+    existingSecret: ""
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+# -----------------------------------------------------------------------------
+# Redis
+# -----------------------------------------------------------------------------
+redis:
+  enabled: true
+  image:
+    repository: redis
+    tag: "7-alpine"
+    pullPolicy: IfNotPresent
+  externalUrl: ""
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Key-Encryption-Key (KEK) provider
+# -----------------------------------------------------------------------------
+# LeakShield uses envelope encryption (KEK ⊃ DEK ⊃ data). Pick the provider
+# that matches your environment. `local` is dev-only; production deployments
+# should use Vault or a cloud KMS.
+kek:
+  provider: local       # local | vault | aws | gcp | azure
+  # Name of an existing Secret holding KEK material when `provider=local`.
+  # The Secret must contain the key `kek` (32 random bytes).
+  secretName: ""
+  vault:
+    address: "https://vault.example.com:8200"
+    transitPath: "transit/keys/leakshield"
+    role: "leakshield"
+    # If using Kubernetes auth, set this to the Vault auth path.
+    authPath: "auth/kubernetes"
+  aws:
+    region: "us-east-1"
+    keyId: "alias/leakshield"
+    # Use IRSA (IAM Roles for Service Accounts) for credentialless access.
+    # Set the role ARN on `serviceAccount.annotations`.
+  gcp:
+    project: ""
+    location: "global"
+    keyRing: "leakshield"
+    keyName: "kek"
+  azure:
+    vaultUrl: "https://leakshield.vault.azure.net"
+    keyName: "leakshield-kek"
+
+# -----------------------------------------------------------------------------
+# Auth (panel <-> gateway sessions)
+# -----------------------------------------------------------------------------
+auth:
+  # Either set `jwtSecret` inline (NOT recommended) or reference an existing
+  # Secret with `existingSecret` and key `jwt-secret`.
+  jwtSecret: ""
+  existingSecret: ""
+  # Optional SSO. Leave disabled until upstream support lands.
+  sso:
+    enabled: false
+    provider: ""        # oidc | saml | google | github
+    clientId: ""
+    clientSecret: ""
+    issuerUrl: ""
+    redirectUri: ""
+
+# -----------------------------------------------------------------------------
+# Ingress
+# -----------------------------------------------------------------------------
+# Single ingress that routes:
+#   - panel root + /admin/* → panel
+#   - /openai/*, /anthropic/*, /google/*, /azure/*, /v1/* → gateway
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: leakshield.example.com
+  tls: []
+    # - secretName: leakshield-tls
+    #   hosts:
+    #     - leakshield.example.com
+
+# -----------------------------------------------------------------------------
+# Observability
+# -----------------------------------------------------------------------------
+observability:
+  otlp:
+    # Endpoint for OpenTelemetry traces (OTLP/gRPC).
+    endpoint: ""
+    # `insecure: true` disables TLS to the collector — only acceptable
+    # in-cluster.
+    insecure: false
+  prometheus:
+    enabled: true
+    # Optional ServiceMonitor (kube-prometheus-stack). Requires the CRD.
+    serviceMonitor:
+      enabled: false
+      additionalLabels: {}
+      interval: 30s
+
+# -----------------------------------------------------------------------------
+# Service account
+# -----------------------------------------------------------------------------
+serviceAccount:
+  create: true
+  name: ""
+  # IRSA / Workload Identity / AAD pod identity annotations go here.
+  annotations: {}
+
+# -----------------------------------------------------------------------------
+# Pod security context
+# -----------------------------------------------------------------------------
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# -----------------------------------------------------------------------------
+# Container security context
+# -----------------------------------------------------------------------------
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+# -----------------------------------------------------------------------------
+# Scheduling
+# -----------------------------------------------------------------------------
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# -----------------------------------------------------------------------------
+# Network policy
+# -----------------------------------------------------------------------------
+networkPolicy:
+  enabled: false
+  # CIDR blocks allowed to reach the gateway. Empty list means cluster only.
+  allowedClientCidrs: []

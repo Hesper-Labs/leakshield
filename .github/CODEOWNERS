@@ -1,0 +1,29 @@
+# Default owner for everything in the repo. The `maintainers` GitHub team
+# under the Hesper-Labs org reviews any path not matched below.
+*                                @Hesper-Labs/maintainers
+
+# Gateway (Go) — proxy, admin REST, worker.
+/gateway/                        @Hesper-Labs/maintainers
+/proto/                          @Hesper-Labs/maintainers
+
+# Inspector (Python) — DLP service.
+/inspector/                      @Hesper-Labs/maintainers
+
+# Admin panel (Next.js).
+/panel/                          @Hesper-Labs/maintainers
+
+# Deployment artefacts — Helm chart and production compose file.
+/deploy/                         @Hesper-Labs/maintainers
+
+# Public-facing surfaces — review by docs- and security-aware maintainers.
+/docs/                           @Hesper-Labs/maintainers
+/README.md                       @Hesper-Labs/maintainers
+/SECURITY.md                     @Hesper-Labs/maintainers
+/CHANGELOG.md                    @Hesper-Labs/maintainers
+/CODE_OF_CONDUCT.md              @Hesper-Labs/maintainers
+
+# CI / release plumbing — extra eyes wanted on anything signing or shipping
+# images.
+/.github/                        @Hesper-Labs/maintainers
+/.github/workflows/release.yml   @Hesper-Labs/maintainers
+/.github/workflows/codeql.yml    @Hesper-Labs/maintainers

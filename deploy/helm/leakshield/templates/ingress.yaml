@@ -1,0 +1,79 @@
+{{- if .Values.ingress.enabled }}
+{{- $gatewayName := include "leakshield.componentName" (list . "gateway") -}}
+{{- $panelName := include "leakshield.componentName" (list . "panel") -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "leakshield.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          # Public proxy paths route to the gateway. Order matters: more
+          # specific paths must come before the panel root.
+          - path: /openai
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $gatewayName }}
+                port:
+                  number: {{ .Values.gateway.service.port }}
+          - path: /anthropic
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $gatewayName }}
+                port:
+                  number: {{ .Values.gateway.service.port }}
+          - path: /google
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $gatewayName }}
+                port:
+                  number: {{ .Values.gateway.service.port }}
+          - path: /azure
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $gatewayName }}
+                port:
+                  number: {{ .Values.gateway.service.port }}
+          - path: /v1
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $gatewayName }}
+                port:
+                  number: {{ .Values.gateway.service.port }}
+          - path: /admin
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $panelName }}
+                port:
+                  number: {{ .Values.panel.service.port }}
+          # Panel root catch-all. Keep this last.
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ $panelName }}
+                port:
+                  number: {{ .Values.panel.service.port }}
+{{- end }}

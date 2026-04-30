@@ -1,0 +1,19 @@
+{{- if .Values.postgres.enabled }}
+{{- $name := printf "%s-postgres" (include "leakshield.fullname" .) -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.componentLabels" (list . "postgres") | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+      protocol: TCP
+  selector:
+    {{- include "leakshield.componentSelectorLabels" (list . "postgres") | nindent 4 }}
+{{- end }}

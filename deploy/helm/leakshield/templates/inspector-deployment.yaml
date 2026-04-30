@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "leakshield.componentName" (list . "inspector") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "leakshield.componentLabels" (list . "inspector") | nindent 4 }}
+spec:
+  replicas: {{ .Values.inspector.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "leakshield.componentSelectorLabels" (list . "inspector") | nindent 6 }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        {{- include "leakshield.componentSelectorLabels" (list . "inspector") | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "leakshield.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.inspector.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: inspector
+          image: {{ include "leakshield.image" (dict "ctx" . "component" "inspector") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.inspector.service.port }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "leakshield.configMapName" . }}
+          env:
+            - name: LEAKSHIELD_INSPECTOR_PORT
+              value: {{ .Values.inspector.service.port | quote }}
+            - name: LEAKSHIELD_INSPECTOR_BACKEND
+              value: {{ .Values.inspector.backend | quote }}
+            - name: LEAKSHIELD_INSPECTOR_BACKEND_URL
+              value: {{ .Values.inspector.backendUrl | quote }}
+            - name: LEAKSHIELD_INSPECTOR_JUDGE_MODEL
+              value: {{ .Values.inspector.judgeModel | quote }}
+            {{- range $k, $v := .Values.inspector.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.inspector.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          livenessProbe:
+            {{- toYaml .Values.inspector.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.inspector.readinessProbe | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.inspector.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.inspector.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

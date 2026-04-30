@@ -1,49 +1,12 @@
-import Link from "next/link";
+import { redirect } from "next/navigation";
 
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-export const metadata = {
-  title: "Sign up",
-};
-
-export default function SignUpPage() {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Create your LeakShield workspace</CardTitle>
-        <CardDescription>
-          A fresh install routes you to the onboarding wizard once the gateway is
-          reachable. Use this page to bootstrap the very first super admin.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <Alert>
-          <AlertTitle>Hooked up in the next milestone</AlertTitle>
-          <AlertDescription>
-            The gateway exposes <code>POST /admin/v1/auth/bootstrap</code>; the form
-            wiring lives next to the onboarding wizard so the two flows share a
-            single submission path. For now you can start at{" "}
-            <Link className="text-primary underline-offset-4 hover:underline" href="/onboarding/1">
-              /onboarding/1
-            </Link>
-            .
-          </AlertDescription>
-        </Alert>
-        <p className="text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link className="text-primary underline-offset-4 hover:underline" href="/sign-in">
-            Sign in
-          </Link>
-          .
-        </p>
-      </CardContent>
-    </Card>
-  );
+/**
+ * /sign-up doesn't exist as its own form anymore. On a fresh install the
+ * onboarding wizard handles bootstrap end-to-end; on an already-installed
+ * gateway sign-up is invite-only via the admin panel. Either way, send the
+ * visitor to /onboarding/1 and let the wizard's setup-status check decide
+ * what to render.
+ */
+export default function SignUpRedirect() {
+  redirect("/onboarding/1");
 }

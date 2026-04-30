@@ -53,11 +53,13 @@ yarn-error.log*
 # Docker
 docker-compose.override.yml
 
-# Generated
+# Generated (gateway Go stubs are generated at build time; panel TS types are
+# regenerated from the gateway's OpenAPI spec; sqlc output is regenerated from
+# .sql files). Inspector Python proto stubs ARE committed so the package is
+# importable without protoc on every developer machine.
 gateway/internal/store/postgres/*.gen.go
 panel/lib/api/types.ts
 proto/inspector/v1/*.pb.go
-inspector/src/leakshield_inspector/proto/
 
 # Local data
 postgres-data/

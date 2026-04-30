@@ -3,17 +3,14 @@ package server
 import (
 	"context"
 	"database/sql"
-	"embed"
 	"fmt"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 	"github.com/pressly/goose/v3"
 
 	"github.com/Hesper-Labs/leakshield/gateway/internal/config"
+	"github.com/Hesper-Labs/leakshield/gateway/internal/migrations"
 )
-
-//go:embed all:../migrations
-var migrationsFS embed.FS
 
 // RunMigrate executes a goose migration operation against the configured database.
 func RunMigrate(ctx context.Context, cfg *config.Config, op string) error {
@@ -23,20 +20,20 @@ func RunMigrate(ctx context.Context, cfg *config.Config, op string) error {
 	}
 	defer db.Close()
 
-	goose.SetBaseFS(migrationsFS)
+	goose.SetBaseFS(migrations.FS)
 	if err := goose.SetDialect("postgres"); err != nil {
 		return err
 	}
 
 	switch op {
 	case "up":
-		return goose.UpContext(ctx, db, "../migrations")
+		return goose.UpContext(ctx, db, ".")
 	case "down":
-		return goose.DownContext(ctx, db, "../migrations")
+		return goose.DownContext(ctx, db, ".")
 	case "status":
-		return goose.StatusContext(ctx, db, "../migrations")
+		return goose.StatusContext(ctx, db, ".")
 	case "reset":
-		return goose.ResetContext(ctx, db, "../migrations")
+		return goose.ResetContext(ctx, db, ".")
 	default:
 		return fmt.Errorf("unknown migrate op %q (expected up|down|status|reset)", op)
 	}

@@ -1,0 +1,223 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * LeakShield design tokens.
+ *
+ * Light theme is the unmodified default — white surfaces, navy text,
+ * blue accents, plus green/red for allow/deny status. Dark mode is
+ * opt-in via the `class` strategy.
+ *
+ * Brand reference: assets/README.md.
+ */
+
+:root {
+  /* Brand */
+  --brand-navy: oklch(0.21 0.034 264.665);   /* #0F172A */
+  --brand-blue: oklch(0.62 0.214 259.815);   /* #3B82F6 */
+  --brand-allow: oklch(0.696 0.17 162.48);   /* emerald-500 */
+  --brand-deny: oklch(0.637 0.237 25.331);   /* red-500 */
+
+  --background: #ffffff;
+  --foreground: var(--brand-navy);
+
+  --card: #ffffff;
+  --card-foreground: var(--brand-navy);
+
+  --popover: #ffffff;
+  --popover-foreground: var(--brand-navy);
+
+  --primary: var(--brand-blue);
+  --primary-foreground: #ffffff;
+
+  --secondary: oklch(0.968 0.007 247.896);
+  --secondary-foreground: var(--brand-navy);
+
+  --muted: oklch(0.968 0.007 247.896);
+  --muted-foreground: oklch(0.554 0.046 257.417);
+
+  --accent: oklch(0.968 0.007 247.896);
+  --accent-foreground: var(--brand-navy);
+
+  --destructive: var(--brand-deny);
+  --destructive-foreground: #ffffff;
+
+  --success: var(--brand-allow);
+  --success-foreground: #ffffff;
+  --warning: oklch(0.769 0.188 70.08);
+  --warning-foreground: var(--brand-navy);
+
+  --border: oklch(0.929 0.013 255.508);
+  --input: oklch(0.929 0.013 255.508);
+  --ring: var(--brand-blue);
+
+  --chart-1: var(--brand-blue);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--brand-navy);
+  --sidebar-primary: var(--brand-blue);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: oklch(0.968 0.007 247.896);
+  --sidebar-accent-foreground: var(--brand-navy);
+  --sidebar-border: oklch(0.929 0.013 255.508);
+  --sidebar-ring: var(--brand-blue);
+
+  --radius: 0.5rem;
+}
+
+.dark {
+  --background: oklch(0.13 0.028 261.692);
+  --foreground: oklch(0.984 0.003 247.858);
+
+  --card: oklch(0.21 0.034 264.665);
+  --card-foreground: oklch(0.984 0.003 247.858);
+
+  --popover: oklch(0.21 0.034 264.665);
+  --popover-foreground: oklch(0.984 0.003 247.858);
+
+  --primary: oklch(0.707 0.165 254.624);
+  --primary-foreground: oklch(0.13 0.028 261.692);
+
+  --secondary: oklch(0.278 0.033 256.848);
+  --secondary-foreground: oklch(0.984 0.003 247.858);
+
+  --muted: oklch(0.278 0.033 256.848);
+  --muted-foreground: oklch(0.711 0.035 256.788);
+
+  --accent: oklch(0.278 0.033 256.848);
+  --accent-foreground: oklch(0.984 0.003 247.858);
+
+  --destructive: oklch(0.704 0.191 22.216);
+  --destructive-foreground: oklch(0.984 0.003 247.858);
+
+  --success: oklch(0.696 0.17 162.48);
+  --success-foreground: oklch(0.13 0.028 261.692);
+  --warning: oklch(0.769 0.188 70.08);
+  --warning-foreground: oklch(0.13 0.028 261.692);
+
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.551 0.027 264.364);
+
+  --chart-1: oklch(0.707 0.165 254.624);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+
+  --sidebar: oklch(0.21 0.034 264.665);
+  --sidebar-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-primary: oklch(0.707 0.165 254.624);
+  --sidebar-primary-foreground: oklch(0.13 0.028 261.692);
+  --sidebar-accent: oklch(0.278 0.033 256.848);
+  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.551 0.027 264.364);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    @apply antialiased;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--brand-blue) 25%, transparent);
+    color: var(--foreground);
+  }
+}
+
+@layer utilities {
+  /* Pulsing dot for the live SSE connection indicator. */
+  .pulse-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 9999px;
+    background: currentColor;
+    opacity: 0.6;
+    animation: pulse-dot 1.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-dot {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 0.6;
+    }
+    50% {
+      transform: scale(2);
+      opacity: 0;
+    }
+  }
+}

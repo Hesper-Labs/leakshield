@@ -1,0 +1,53 @@
+{
+  "app": {
+    "name": "LeakShield",
+    "tagline": "API Geçidi. Sır Bekçisi. Güvenlik için tasarlandı."
+  },
+  "nav": {
+    "dashboard": "Gösterge Paneli",
+    "providers": "Sağlayıcılar",
+    "users": "Kullanıcılar",
+    "keys": "Sanal Anahtarlar",
+    "policy": "DLP Politikası",
+    "policyCategories": "Kategoriler",
+    "policyVersions": "Sürümler",
+    "analytics": "Analitik",
+    "logs": "Denetim Kaydı",
+    "settings": "Ayarlar",
+    "settingsTeam": "Takım",
+    "settingsApi": "API",
+    "settingsIntegrations": "Entegrasyonlar",
+    "settingsProfile": "Profil",
+    "superAdmin": "Süper Yönetici"
+  },
+  "common": {
+    "comingSoon": "Yakında",
+    "phase": "Faz {phase}",
+    "loading": "Yükleniyor…",
+    "search": "Ara",
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "delete": "Sil",
+    "create": "Oluştur",
+    "back": "Geri",
+    "next": "İleri",
+    "skip": "Atla"
+  },
+  "auth": {
+    "signIn": "Giriş yap",
+    "signUp": "Kayıt ol",
+    "email": "E-posta",
+    "password": "Parola",
+    "signInCta": "LeakShield'a giriş yapın",
+    "signUpCta": "LeakShield çalışma alanınızı oluşturun"
+  },
+  "onboarding": {
+    "title": "LeakShield kurulumu",
+    "step": "Adım {current} / {total}"
+  },
+  "logs": {
+    "live": "Canlı",
+    "paused": "Kaydırma sırasında duraklatıldı",
+    "reconnecting": "Yeniden bağlanıyor…"
+  }
+}

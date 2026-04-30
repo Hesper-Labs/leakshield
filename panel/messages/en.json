@@ -1,0 +1,53 @@
+{
+  "app": {
+    "name": "LeakShield",
+    "tagline": "API Gateway. Secret Guard. Built for Safety."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "providers": "Providers",
+    "users": "Users",
+    "keys": "Virtual Keys",
+    "policy": "DLP Policy",
+    "policyCategories": "Categories",
+    "policyVersions": "Versions",
+    "analytics": "Analytics",
+    "logs": "Audit Log",
+    "settings": "Settings",
+    "settingsTeam": "Team",
+    "settingsApi": "API",
+    "settingsIntegrations": "Integrations",
+    "settingsProfile": "Profile",
+    "superAdmin": "Super Admin"
+  },
+  "common": {
+    "comingSoon": "Coming soon",
+    "phase": "Phase {phase}",
+    "loading": "Loading…",
+    "search": "Search",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "create": "Create",
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signUp": "Sign up",
+    "email": "Email",
+    "password": "Password",
+    "signInCta": "Sign in to LeakShield",
+    "signUpCta": "Create your LeakShield workspace"
+  },
+  "onboarding": {
+    "title": "Set up LeakShield",
+    "step": "Step {current} of {total}"
+  },
+  "logs": {
+    "live": "Live",
+    "paused": "Paused on scroll",
+    "reconnecting": "Reconnecting…"
+  }
+}

@@ -1,0 +1,112 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: leakshield
+      POSTGRES_PASSWORD: leakshield_dev
+      POSTGRES_DB: leakshield
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leakshield"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  inspector:
+    build:
+      context: ./inspector
+      dockerfile: Dockerfile
+    environment:
+      LEAKSHIELD_INSPECTOR_PORT: "50051"
+      # Default backend is 'mock' so the gateway works end-to-end with no
+      # local LLM. Switch to 'ollama' (or vllm / llamacpp / openai_compat)
+      # once you have a model server running.
+      LEAKSHIELD_INSPECTOR_BACKEND: ${LEAKSHIELD_INSPECTOR_BACKEND:-mock}
+      LEAKSHIELD_INSPECTOR_BACKEND_URL: ${LEAKSHIELD_INSPECTOR_BACKEND_URL:-http://ollama:11434}
+      LEAKSHIELD_INSPECTOR_LOG_LEVEL: info
+    ports:
+      - "50051:50051"
+    healthcheck:
+      test: ["CMD", "python", "-m", "leakshield_inspector.healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    environment:
+      LEAKSHIELD_HTTP_ADDR: "0.0.0.0:8080"
+      LEAKSHIELD_DATABASE_URL: postgres://leakshield:leakshield_dev@postgres:5432/leakshield?sslmode=disable
+      LEAKSHIELD_REDIS_URL: redis://redis:6379/0
+      LEAKSHIELD_INSPECTOR_ADDR: inspector:50051
+      LEAKSHIELD_KEK_FILE: /var/lib/leakshield/kek
+      LEAKSHIELD_LOG_LEVEL: info
+    ports:
+      - "8080:8080"
+    volumes:
+      - leakshield-state:/var/lib/leakshield
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      inspector:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  panel:
+    build:
+      context: ./panel
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8080
+      AUTH_SECRET: dev-secret-change-me
+    ports:
+      - "3000:3000"
+    depends_on:
+      gateway:
+        condition: service_healthy
+
+  # Optional local LLM. Off by default — LeakShield never downloads model
+  # weights for you. Bring this up explicitly with:
+  #   docker compose --profile local-llm up -d
+  # and pull whatever model you want with `ollama pull qwen2.5:3b`, etc.
+  ollama:
+    profiles: ["local-llm"]
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-data:
+  leakshield-state:

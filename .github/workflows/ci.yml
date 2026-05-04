@@ -127,7 +127,7 @@ jobs:
           cache-dependency-path: panel/package-lock.json
 
       - name: Cache Next.js build
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: panel/.next/cache
           key: nextjs-${{ runner.os }}-node${{ matrix.node }}-${{ hashFiles('panel/package-lock.json') }}-${{ hashFiles('panel/**/*.[jt]s', 'panel/**/*.[jt]sx') }}

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.12-slim AS build
+FROM python:3.14-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential gcc && \
@@ -9,7 +9,7 @@ COPY src ./src
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir .
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates && \
     rm -rf /var/lib/apt/lists/* && \
